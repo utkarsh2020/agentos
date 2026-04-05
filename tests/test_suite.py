@@ -311,6 +311,17 @@ class AgentOSTestCase(unittest.TestCase):
         self.assertNotIn("<", text)
         self.assertNotIn("alert", text)
 
+    def test_skill_telegram_send(self):
+        import sys
+        sys.path.insert(0, "skills/telegram")
+        import handler
+        # Missing token
+        result = handler.handle({"text": "hello"}, {})
+        self.assertIn("error", result)
+        # Missing text
+        result = handler.handle({}, {"TELEGRAM_BOT_TOKEN": "fake", "TELEGRAM_CHAT_ID": "123"})
+        self.assertIn("error", result)
+
     # ── Scheduler – schedule parsing ──────────────────────────────────────
 
     def test_schedule_every_seconds(self):

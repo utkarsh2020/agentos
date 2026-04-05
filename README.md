@@ -334,6 +334,149 @@ agent secret delete --project myproject --key SLACK_TOKEN
 ```bash
 agent skill list
 agent skill install <skill-id>   # v2 — not yet implemented (drop handler.py manually)
+
+#### Telegram skill (`telegram.send`, `telegram.get_updates`, `telegram.set_webhook`)
+
+Send messages via Telegram Bot API, poll for incoming messages, or set webhooks.
+
+```python
+# Send a message
+{"action": "skill_call", "skill": "telegram.send", "params": {
+  "text": "Hello from AgentOS!",
+  "parse_mode": "Markdown"
+}}
+
+# Poll for incoming messages (long polling)
+{"action": "skill_call", "skill": "telegram.get_updates", "params": {
+  "timeout": 30,
+  "offset": None
+}}
+
+# Agent calls this internally to get new messages
+# Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (set via vault or env)
+```
+
+#### WhatsApp skill (`whatsapp.send`, `whatsapp.list`, `whatsapp.template`)
+
+Send messages via WhatsApp Business Cloud API (Meta).
+
+```python
+# Send a text message
+{"action": "skill_call", "skill": "whatsapp.send", "params": {
+  "to": "+1234567890",
+  "text": "Hello from AgentOS!"
+}}
+
+# Send media (image, document, video)
+{"action": "skill_call", "skill": "whatsapp.send", "params": {
+  "to": "+1234567890",
+  "type": "image",
+  "media_url": "https://example.com/image.jpg",
+  "caption": "Image caption"
+}}
+
+# Send interactive list
+{"action": "skill_call", "skill": "whatsapp.list", "params": {
+  "to": "+1234567890",
+  "title": "Select Option",
+  "message": "Choose from the list below",
+  "button_text": "Select",
+  "sections": [{"title": "Options", "rows": [{"id": "1", "title": "Option 1"}]}]
+}}
+
+# Send template message
+{"action": "skill_call", "skill": "whatsapp.template", "params": {
+  "to": "+1234567890",
+  "template_name": "hello_world",
+  "language": "en_US"
+}}
+
+# Secrets: WHATSAPP_TOKEN, WHATSAPP_PHONE_ID (set via vault or env)
+```
+
+#### Slack skill (`slack.send`, `slack.conversations_list`, `slack.webhook`)
+
+Send messages via Slack API or incoming webhooks.
+
+```python
+# Send a message
+{"action": "skill_call", "skill": "slack.send", "params": {
+  "channel": "#general",
+  "text": "Hello from AgentOS!"
+}}
+
+# Send with Slack Block Kit
+{"action": "skill_call", "skill": "slack.send", "params": {
+  "channel": "#alerts",
+  "text": "New alert!",
+  "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "*Alert*"}}]
+}}
+
+# List channels
+{"action": "skill_call", "skill": "slack.conversations_list", "params": {
+  "types": "public_channel,private_channel"
+}}
+
+# Use incoming webhook (no token needed)
+{"action": "skill_call", "skill": "slack.webhook", "params": {
+  "webhook_url": "https://hooks.slack.com/services/XXX",
+  "text": "Message via webhook"
+}}
+
+# Secrets: SLACK_TOKEN, SLACK_DEFAULT_CHANNEL (set via vault or env)
+```
+
+#### Gmail skill (`gmail.send`, `gmail.list`, `gmail.get`, `gmail.draft`)
+
+Send and read emails via Gmail API. Requires OAuth2 setup (see below).
+
+```python
+# Send an email
+{"action": "skill_call", "skill": "gmail.send", "params": {
+  "mode": "send",
+  "to": "user@example.com",
+  "subject": "Hello from AgentOS",
+  "body": "Email body text"
+}}
+
+# Send HTML email
+{"action": "skill_call", "skill": "gmail.send", "params": {
+  "mode": "send",
+  "to": "user@example.com",
+  "subject": "HTML Email",
+  "html": "<h1>Hello</h1><p>HTML content</p>"
+}}
+
+# List emails
+{"action": "skill_call", "skill": "gmail.send", "params": {
+  "mode": "list",
+  "max_results": 10,
+  "query": "is:unread"
+}}
+
+# Get email details
+{"action": "skill_call", "skill": "gmail.send", "params": {
+  "mode": "get",
+  "message_id": "<message-id>"
+}}
+
+# Create draft
+{"action": "skill_call", "skill": "gmail.send", "params": {
+  "mode": "draft",
+  "to": "user@example.com",
+  "subject": "Draft Subject",
+  "body": "Draft body"
+}}
+
+# Secrets: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN (set via vault or env)
+```
+
+**Gmail OAuth2 Setup (Pi Zero compatible):**
+1. Create OAuth2 credentials in Google Cloud Console
+2. On a desktop machine, obtain a refresh_token via OAuth2 flow
+3. Store the refresh_token in AgentOS vault
+4. Skill will automatically exchange for access_token on each call
+```
 ```
 
 ### Monitoring & logs
@@ -792,6 +935,7 @@ agentos/
 - Secrets vault — AES-256-GCM / HMAC-XOR fallback, PBKDF2 master key
 - JWT HS256 auth + five-role RBAC
 - Built-in skills: `http.call`, `web.scrape`, `fs.read`, `fs.write`, `system.shell`, `memory.remember`, `memory.recall`
+- Plugin skills: `telegram.send`, `telegram.get_updates`, `telegram.set_webhook` (via `skills/telegram/handler.py`)
 - CLI tool with project, task, agent, secret, skill, monitor, logs commands
 - TOML project definition format
 - systemd service unit + Debian/Pi Zero install script

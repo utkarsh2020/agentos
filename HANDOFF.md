@@ -284,31 +284,42 @@ This section is the primary guide for the next development phase. Items are orde
 
 ### 7.1 Communication Skills (v2 Priority 1)
 
-**Telegram skill** (`skills/telegram/handler.py`)
+**Telegram skill** (`skills/telegram/handler.py`) — ✅ Complete
 - Bot API: `POST https://api.telegram.org/bot{TOKEN}/sendMessage`
 - Secrets needed: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-- Also need: incoming message polling or webhook receiver for trigger-on-message
-- Pattern: same as `builtin_skills.py` — `urllib.request`, return `{"ok": True, "message_id": ...}`
+- `handle(params, secrets)`: Send text messages
+- `handle_photo(params, secrets)`: Send photos
+- `handle_get_updates(params, secrets)`: Long poll for incoming messages
+- `handle_set_webhook(params, secrets)`: Register webhook URL
+- `handle_delete_webhook(params, secrets)`: Remove webhook
 
-**WhatsApp skill** (`skills/whatsapp/handler.py`)
+**WhatsApp skill** (`skills/whatsapp/handler.py`) — ✅ Complete
 - WhatsApp Business Cloud API (Meta): `POST https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages`
 - Secrets: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`
-- Personal WhatsApp (non-Business): requires unofficial `whatsapp-web.js` or `baileys` — not stdlib-compatible, needs a sidecar process
+- `handle(params, secrets)`: Send text, image, document, audio, video, sticker messages
+- `handle_list(params, secrets)`: Send interactive list messages
+- `handle_template(params, secrets)`: Send template messages
+- `handle_mark_seen(params, secrets)`: Send read receipts
 
-**Slack skill** (`skills/slack/handler.py`)
+**Slack skill** (`skills/slack/handler.py`) — ✅ Complete
 - `POST https://slack.com/api/chat.postMessage`
 - Headers: `Authorization: Bearer {SLACK_TOKEN}`
 - Secrets: `SLACK_TOKEN`, optionally `SLACK_DEFAULT_CHANNEL`
-- Also useful: `conversations.list`, `users.info`, incoming webhooks (simpler, no token scopes)
+- `handle(params, secrets)`: Send messages with text, blocks, attachments
+- `handle_conversations_list(params, secrets)`: List channels
+- `handle_users_info(params, secrets)`: Get user info
+- `handle_webhook(params, secrets)`: Send via incoming webhook
+- `handle_update(params, secrets)`: Update existing message
+- `handle_delete(params, secrets)`: Delete message
 
-**Gmail skill** (`skills/gmail/handler.py`)
-- Needs OAuth2 — the only Pi Zero-compatible approach is:
-  1. User does OAuth flow on a desktop machine, gets `refresh_token`
-  2. Store `refresh_token` in vault
-  3. Skill exchanges `refresh_token` for `access_token` via `POST https://oauth2.googleapis.com/token`
-  4. Use `access_token` to call Gmail API via `urllib.request`
+**Gmail skill** (`skills/gmail/handler.py`) — ✅ Complete
+- OAuth2 flow: exchange refresh token for access token via `POST https://oauth2.googleapis.com/token`
 - Secrets: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`
-- Operations: `gmail.read` (list/get messages), `gmail.send` (create + send)
+- `handle(params, secrets)`: Route to sub-operations based on mode
+- `handle_send(params, secrets)`: Send emails with text/HTML, attachments
+- `handle_list(params, secrets)`: List emails with query support
+- `handle_get(params, secrets)`: Get specific email details
+- `handle_draft(params, secrets)`: Create draft emails
 
 ### 7.2 Multi-Agent Collaboration Patterns (v2 Priority 2)
 
