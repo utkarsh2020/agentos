@@ -1,0 +1,47 @@
+# ── Runtime state ─────────────────────────────────────────────────────────
+agentd.db
+agentd.db-wal
+agentd.db-shm
+agentd.pid
+agentd.sock
+
+# ── Secrets & vault ────────────────────────────────────────────────────────
+vault/*.enc
+vault/master.key
+/vault/
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+logs/*.jsonl
+logs/*.log
+/logs/
+
+# ── Projects runtime data ─────────────────────────────────────────────────
+projects/*/
+/projects/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment ───────────────────────────────────────────────────────────
+.env
+agentd.env
+*.env.local
+
+# ── User token (saved by CLI) ─────────────────────────────────────────────
+.agentd_token
+
+# ── OS ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

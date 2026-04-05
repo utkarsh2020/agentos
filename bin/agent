@@ -1,0 +1,667 @@
+#!/usr/bin/env python3
+"""
+AgentOS CLI – agent <command> [subcommand] [options]
+
+Commands:
+  start                     Start the agentd daemon
+  status                    Show daemon status
+  project  create|list|run|load|delete|status
+  task     add|list|status
+  agent    list|inspect|kill
+  secret   set|list|delete
+  skill    list|install|unload
+  user     passwd
+  monitor  <project>        Live monitor (poll + display)
+  logs     [--tail N]
+  run      <project.toml>   Load + run a project file
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+# ── Config ─────────────────────────────────────────────────────────────────
+
+API_BASE = os.environ.get("AGENTD_URL", "http://127.0.0.1:7777")
+TOKEN_FILE = Path.home() / ".agentd_token"
+
+
+def _token() -> str:
+    if TOKEN_FILE.exists():
+        return TOKEN_FILE.read_text().strip()
+    return os.environ.get("AGENTD_TOKEN", "")
+
+
+def _save_token(tok: str):
+    TOKEN_FILE.write_text(tok)
+    TOKEN_FILE.chmod(0o600)
+
+
+# ── HTTP helpers ───────────────────────────────────────────────────────────
+
+def _req(method: str, path: str, body: dict = None, auth: bool = True) -> dict:
+    url = f"{API_BASE}{path}"
+    data = json.dumps(body).encode() if body else None
+    headers = {"Content-Type": "application/json"}
+    if auth and (tok := _token()):
+        headers["Authorization"] = f"Bearer {tok}"
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode(errors="replace")
+        try:
+            err = json.loads(raw)
+        except Exception:
+            err = {"error": raw[:200]}
+        _die(f"API error {e.code}: {err.get('error', raw[:100])}")
+    except urllib.error.URLError as e:
+        _die(f"Cannot reach agentd at {API_BASE} – is it running?\n  Start with: agent start")
+
+
+def get(path, **kw):    return _req("GET",    path, **kw)
+def post(path, body):   return _req("POST",   path, body)
+def delete(path):       return _req("DELETE", path)
+
+
+# ── Output helpers ─────────────────────────────────────────────────────────
+
+RESET = "\033[0m"
+BOLD  = "\033[1m"
+DIM   = "\033[2m"
+GREEN = "\033[32m"
+RED   = "\033[31m"
+CYAN  = "\033[36m"
+AMBER = "\033[33m"
+BLUE  = "\033[34m"
+
+
+def _color(text, code): return f"{code}{text}{RESET}"
+def _ok(msg):    print(_color(f"  ✓  {msg}", GREEN))
+def _fail(msg):  print(_color(f"  ✗  {msg}", RED))
+def _info(msg):  print(_color(f"  →  {msg}", CYAN))
+def _die(msg):   print(_color(f"\n  ✗  {msg}", RED), file=sys.stderr); sys.exit(1)
+def _head(msg):  print(f"\n{BOLD}{msg}{RESET}")
+
+
+def _status_color(s: str) -> str:
+    colors = {
+        "running": GREEN, "done": GREEN, "idle": DIM,
+        "failed": RED, "pending": AMBER, "paused": AMBER,
+        "skipped": DIM,
+    }
+    return _color(s, colors.get(s, ""))
+
+
+def _table(rows: list[dict], cols: list[tuple[str, str, int]]):
+    """cols = [(header, key, width), ...]"""
+    header = "  " + "  ".join(f"{BOLD}{h:<{w}}{RESET}" for h, k, w in cols)
+    print(header)
+    print("  " + "  ".join("─" * w for _, _, w in cols))
+    for row in rows:
+        parts = []
+        for h, k, w in cols:
+            val = str(row.get(k, ""))
+            if k == "status":
+                val = _status_color(val)
+                parts.append(f"{val:<{w + 10}}")   # +10 for ANSI codes
+            else:
+                val = val[:w]
+                parts.append(f"{val:<{w}}")
+        print("  " + "  ".join(parts))
+
+
+def _ts(t) -> str:
+    if not t:
+        return "—"
+    try:
+        import datetime
+        return datetime.datetime.fromtimestamp(float(t)).strftime("%H:%M:%S")
+    except Exception:
+        return str(t)
+
+
+# ── Commands ───────────────────────────────────────────────────────────────
+
+def cmd_start(args):
+    """Start the agentd daemon in the foreground."""
+    _head("Starting AgentOS daemon …")
+    # Import and run directly (no exec needed for Pi Zero)
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from agentd.daemon import main
+    main()
+
+
+def cmd_login(args):
+    _head("Login")
+    username = input("  Username: ").strip() or "admin"
+    import getpass
+    password = getpass.getpass("  Password: ")
+    resp = post("/api/auth/login", {"username": username, "password": password})
+    if "token" in resp:
+        _save_token(resp["token"])
+        _ok(f"Logged in as {username}")
+    else:
+        _fail("Login failed")
+
+
+def cmd_status(args):
+    resp = get("/api/status")
+    _head("AgentOS Daemon Status")
+    print(f"  Status   : {_status_color(resp.get('status', '?'))}")
+    print(f"  Version  : {resp.get('version', '?')}")
+    print(f"  Uptime   : {resp.get('uptime_s', 0)}s")
+    print(f"  API      : {API_BASE}")
+    print()
+
+
+# ── project ────────────────────────────────────────────────────────────────
+
+def cmd_project(args):
+    sub = args.subcommand
+
+    if sub == "list":
+        projects = get("/api/projects")
+        _head("Projects")
+        if not projects:
+            _info("No projects. Create one: agent project create --name <name>")
+            return
+        _table(projects, [
+            ("NAME",        "name",        24),
+            ("STATUS",      "status",      10),
+            ("SCHEDULE",    "schedule",    14),
+            ("UPDATED",     "updated_at",  10),
+        ])
+        print()
+
+    elif sub == "create":
+        if not args.name:
+            _die("--name required")
+        body = {"name": args.name}
+        if args.description: body["description"] = args.description
+        if args.schedule:    body["schedule"]    = args.schedule
+        resp = post("/api/projects", body)
+        _ok(f"Project created: {resp['name']}  [id: {resp['id'][:8]}]")
+
+    elif sub == "status":
+        if not args.project:
+            _die("project name/id required")
+        p = _resolve_project(args.project)
+        _head(f"Project: {p['name']}")
+        print(f"  ID       : {p['id']}")
+        print(f"  Status   : {_status_color(p['status'])}")
+        print(f"  Schedule : {p.get('schedule') or '—'}")
+        tasks = p.get("tasks", [])
+        if tasks:
+            print()
+            _head("Tasks")
+            _table(tasks, [
+                ("NAME",     "name",       24),
+                ("STATUS",   "status",     10),
+                ("STARTED",  "started_at", 10),
+                ("FINISHED", "finished_at",10),
+            ])
+        print()
+
+    elif sub == "run":
+        if not args.project:
+            _die("project name/id required")
+        p = _resolve_project(args.project)
+        resp = post(f"/api/projects/{p['id']}/run", {})
+        _ok(f"Project started: {p['name']}")
+        if args.follow:
+            _cmd_monitor_project(p["id"], p["name"])
+
+    elif sub == "load":
+        if not args.file:
+            _die("--file required")
+        _load_project_file(args.file)
+
+    elif sub == "delete":
+        if not args.project:
+            _die("project name/id required")
+        p = _resolve_project(args.project)
+        confirm = input(f"  Delete project '{p['name']}'? [y/N] ").strip().lower()
+        if confirm == "y":
+            delete(f"/api/projects/{p['id']}")
+            _ok(f"Deleted: {p['name']}")
+        else:
+            _info("Cancelled")
+
+    else:
+        _die(f"Unknown subcommand: {sub}\n  Use: list | create | status | run | load | delete")
+
+
+def _resolve_project(name_or_id: str) -> dict:
+    projects = get("/api/projects")
+    for p in projects:
+        if p["id"] == name_or_id or p["name"] == name_or_id:
+            resp = get(f"/api/projects/{p['id']}")
+            return resp
+    _die(f"Project not found: {name_or_id}")
+
+
+def _load_project_file(path: str):
+    """Load a project TOML file via the daemon's Python stack directly."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from agentd.core.loader import import_project
+        from agentd.core import store
+        store.init_db()
+        pid = import_project(path)
+        p = store.fetch_one("projects", pid)
+        _ok(f"Loaded project: {p['name']}  [id: {pid[:8]}]")
+        tasks = store.fetch_where("tasks", project_id=pid)
+        _info(f"  {len(tasks)} task(s) registered")
+        for t in tasks:
+            deps = json.loads(t.get("depends_on") or "[]")
+            dep_str = f"  (depends: {', '.join(deps)})" if deps else ""
+            print(f"     • {t['name']}{dep_str}")
+    except Exception as e:
+        _die(f"Failed to load project: {e}")
+
+
+# ── task ──────────────────────────────────────────────────────────────────
+
+def cmd_task(args):
+    sub = args.subcommand
+
+    if sub == "add":
+        if not args.project:
+            _die("--project required")
+        p = _resolve_project(args.project)
+        agents_list = []
+        if args.model or args.prompt:
+            agents_list = [{
+                "id":       "default",
+                "role":     args.role or "executor",
+                "model":    args.model or "auto",
+                "provider": args.provider or "auto",
+                "prompt":   args.prompt or "Complete the task.",
+                "skills":   (args.skills or "").split(",") if args.skills else [],
+            }]
+        body = {
+            "name": args.name,
+            "depends_on": (args.depends_on or "").split(",") if args.depends_on else [],
+            "config": {"agents": agents_list, "schedule": args.schedule},
+        }
+        resp = post(f"/api/projects/{p['id']}/tasks", body)
+        _ok(f"Task added: {resp['name']}  [id: {resp['id'][:8]}]")
+
+    elif sub == "list":
+        if not args.project:
+            _die("--project required")
+        p = _resolve_project(args.project)
+        tasks = get(f"/api/projects/{p['id']}/tasks")
+        _head(f"Tasks for {p['name']}")
+        _table(tasks, [
+            ("NAME",     "name",       28),
+            ("STATUS",   "status",     10),
+            ("STARTED",  "started_at", 10),
+        ])
+        print()
+
+    elif sub == "status":
+        if not args.task_id:
+            _die("task_id required")
+        t = get(f"/api/tasks/{args.task_id}")
+        _head(f"Task: {t['name']}")
+        print(f"  Status  : {_status_color(t['status'])}")
+        print(f"  Started : {_ts(t.get('started_at'))}")
+        print(f"  Finished: {_ts(t.get('finished_at'))}")
+        if t.get("output"):
+            print(f"\n  Output:")
+            try:
+                out = json.loads(t["output"])
+                print(json.dumps(out, indent=4)[:1200])
+            except Exception:
+                print(f"    {t['output'][:400]}")
+        print()
+
+    else:
+        _die(f"Unknown subcommand: {sub}")
+
+
+# ── agent ─────────────────────────────────────────────────────────────────
+
+def cmd_agent(args):
+    sub = args.subcommand
+
+    if sub == "list":
+        qs = f"?project_id={args.project}" if args.project else ""
+        agents = get(f"/api/agents{qs}")
+        _head("Agents")
+        _table(agents, [
+            ("ID",       "id",         10),
+            ("ROLE",     "role",       10),
+            ("STATE",    "state",      10),
+            ("MODEL",    "model",      30),
+            ("TOKENS",   "token_usage",8),
+        ])
+        print()
+
+    elif sub == "inspect":
+        if not args.agent_id:
+            _die("agent_id required")
+        a = get(f"/api/agents/{args.agent_id}")
+        _head(f"Agent {a['id'][:8]} ({a['role']})")
+        print(f"  State    : {_status_color(a['state'])}")
+        print(f"  Model    : {a['model']}")
+        print(f"  Tokens   : {a.get('token_usage', 0)}")
+        print(f"  Started  : {_ts(a.get('started_at'))}")
+        msgs = a.get("messages", [])
+        if msgs:
+            print(f"\n  Messages ({len(msgs)}):")
+            for m in msgs[-6:]:
+                role_col = GREEN if m["role"] == "assistant" else CYAN
+                content  = m["content"][:120].replace("\n", " ")
+                print(f"    {_color(m['role'][:9]:<9, role_col)} {content}")
+        print()
+
+    else:
+        _die(f"Unknown subcommand: {sub}")
+
+
+# ── secret ────────────────────────────────────────────────────────────────
+
+def cmd_secret(args):
+    sub = args.subcommand
+    if not args.project:
+        _die("--project required")
+    p = _resolve_project(args.project)
+
+    if sub == "set":
+        if not args.key:
+            _die("--key required")
+        import getpass
+        value = args.value or getpass.getpass(f"  Value for {args.key} (hidden): ")
+        post(f"/api/projects/{p['id']}/secrets", {"key": args.key, "value": value})
+        _ok(f"Secret stored: {args.key}  (encrypted AES-256-GCM)")
+
+    elif sub == "list":
+        resp = get(f"/api/projects/{p['id']}/secrets")
+        _head(f"Secrets for {p['name']}")
+        for k in resp.get("keys", []):
+            print(f"    • {k}")
+        print()
+
+    elif sub == "delete":
+        if not args.key:
+            _die("--key required")
+        delete(f"/api/projects/{p['id']}/secrets/{args.key}")
+        _ok(f"Deleted secret: {args.key}")
+
+    else:
+        _die(f"Unknown subcommand: {sub}")
+
+
+# ── skill ─────────────────────────────────────────────────────────────────
+
+def cmd_skill(args):
+    sub = args.subcommand
+
+    if sub == "list":
+        skills = get("/api/skills")
+        _head("Loaded Skills")
+        for s in skills:
+            print(f"    • {s['id']}")
+        print()
+
+    elif sub == "install":
+        _info("Skill installation from registry coming in v2.")
+        _info("For now, drop a handler.py in skills/<skill_id>/ and restart agentd.")
+
+    else:
+        _die(f"Unknown subcommand: {sub}")
+
+
+# ── run (shortcut: load + run a .toml) ────────────────────────────────────
+
+def cmd_run(args):
+    if not args.file:
+        _die("Usage: agent run <project.toml>")
+    path = Path(args.file)
+    if not path.exists():
+        _die(f"File not found: {path}")
+
+    _head(f"Loading {path.name} …")
+    _load_project_file(str(path))
+
+    # Now run via API
+    projects = get("/api/projects")
+    # Find the one we just loaded by checking recently updated
+    if projects:
+        p = sorted(projects, key=lambda x: x.get("updated_at", 0), reverse=True)[0]
+        _ok(f"Running project: {p['name']}")
+        post(f"/api/projects/{p['id']}/run", {})
+        if args.follow:
+            _cmd_monitor_project(p["id"], p["name"])
+
+
+# ── monitor ───────────────────────────────────────────────────────────────
+
+def cmd_monitor(args):
+    if not args.project:
+        _die("Usage: agent monitor <project>")
+    p = _resolve_project(args.project)
+    _cmd_monitor_project(p["id"], p["name"])
+
+
+def _cmd_monitor_project(project_id: str, name: str):
+    _head(f"Monitoring: {name}  (Ctrl+C to stop)")
+    STATES = {"done": "✓", "failed": "✗", "running": "▶", "pending": "·", "skipped": "—"}
+    seen_agents: dict[str, str] = {}
+
+    try:
+        while True:
+            p = get(f"/api/projects/{project_id}")
+            tasks = p.get("tasks", [])
+
+            # Clear and redraw
+            print("\033[2J\033[H", end="")
+            print(f"{BOLD}  AgentOS Monitor – {name}{RESET}  "
+                  f"[{_status_color(p['status'])}]  "
+                  f"{_color(time.strftime('%H:%M:%S'), DIM)}")
+            print()
+
+            for t in tasks:
+                sym = STATES.get(t["status"], "?")
+                sc  = {
+                    "done": GREEN, "failed": RED,
+                    "running": AMBER, "pending": DIM, "skipped": DIM,
+                }.get(t["status"], "")
+                print(f"  {_color(sym, sc)}  {t['name']:<28} {_status_color(t['status'])}")
+
+                # Show agents for this task
+                agents = get(f"/api/agents?project_id={project_id}")
+                task_agents = [a for a in agents if a.get("task_id") == t["id"]]
+                for a in task_agents:
+                    asym = STATES.get(a["state"], "?")
+                    asc  = {
+                        "done": GREEN, "failed": RED,
+                        "running": AMBER, "pending": DIM,
+                    }.get(a["state"], "")
+                    tok = a.get("token_usage", 0)
+                    print(f"       {_color(asym, asc)}  {_color(a['role'][:8]:<10, DIM)} "
+                          f"{a['model'][:28]:<30} {_color(str(tok) + 't', DIM)}")
+
+            # Recent events
+            events = get("/api/events?limit=6")
+            print()
+            print(f"  {DIM}Recent events:{RESET}")
+            for ev in reversed(events):
+                ts = _ts(ev.get("created_at"))
+                print(f"  {_color(ts, DIM)}  {ev['topic']}")
+
+            # Stop if project settled
+            if p["status"] in ("idle",) and all(
+                t["status"] in ("done", "failed", "skipped") for t in tasks
+            ):
+                print()
+                if all(t["status"] == "done" for t in tasks):
+                    _ok("Project completed successfully")
+                else:
+                    _fail("Project completed with failures")
+                break
+
+            time.sleep(2)
+
+    except KeyboardInterrupt:
+        print()
+        _info("Monitor stopped")
+
+
+# ── logs ──────────────────────────────────────────────────────────────────
+
+def cmd_logs(args):
+    limit = args.tail or 20
+    events = get(f"/api/events?limit={limit}")
+    _head(f"Audit Log (last {limit})")
+    for ev in reversed(events):
+        ts    = _ts(ev.get("created_at"))
+        topic = ev["topic"]
+        try:
+            payload = json.loads(ev.get("payload", "{}"))
+            detail  = payload.get("name") or payload.get("agent_id", "")[:8] or ""
+        except Exception:
+            detail = ""
+        detail_str = f"  {_color(detail, DIM)}" if detail else ""
+        print(f"  {_color(ts, DIM)}  {topic:<32}{detail_str}")
+    print()
+
+
+# ── user ──────────────────────────────────────────────────────────────────
+
+def cmd_user(args):
+    if args.subcommand == "passwd":
+        _info("Password change not yet exposed via API – edit DB directly or restart daemon to reset.")
+    else:
+        _die(f"Unknown subcommand: {args.subcommand}")
+
+
+# ── Parser ────────────────────────────────────────────────────────────────
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="agent",
+        description="AgentOS CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--url", help=f"Daemon URL (default: {API_BASE})")
+    sub = p.add_subparsers(dest="command")
+
+    # start
+    sub.add_parser("start", help="Start the agentd daemon")
+
+    # login
+    sub.add_parser("login", help="Authenticate and save token")
+
+    # status
+    sub.add_parser("status", help="Show daemon status")
+
+    # project
+    pp = sub.add_parser("project", help="Manage projects")
+    pp.add_argument("subcommand", choices=["list","create","status","run","load","delete"])
+    pp.add_argument("project", nargs="?", help="Project name or ID")
+    pp.add_argument("--name", "-n")
+    pp.add_argument("--description", "-d")
+    pp.add_argument("--schedule", "-s")
+    pp.add_argument("--file", "-f")
+    pp.add_argument("--follow", action="store_true", help="Follow execution (monitor)")
+
+    # task
+    tp = sub.add_parser("task", help="Manage tasks")
+    tp.add_argument("subcommand", choices=["add","list","status"])
+    tp.add_argument("task_id", nargs="?")
+    tp.add_argument("--project", "-p")
+    tp.add_argument("--name", "-n")
+    tp.add_argument("--depends-on")
+    tp.add_argument("--model", "-m")
+    tp.add_argument("--provider")
+    tp.add_argument("--role", default="executor")
+    tp.add_argument("--prompt")
+    tp.add_argument("--skills")
+    tp.add_argument("--schedule")
+
+    # agent
+    ap = sub.add_parser("agent", help="Manage agents")
+    ap.add_argument("subcommand", choices=["list","inspect","kill"])
+    ap.add_argument("agent_id", nargs="?")
+    ap.add_argument("--project", "-p")
+
+    # secret
+    sp = sub.add_parser("secret", help="Manage secrets")
+    sp.add_argument("subcommand", choices=["set","list","delete"])
+    sp.add_argument("--project", "-p")
+    sp.add_argument("--key", "-k")
+    sp.add_argument("--value", "-v")
+
+    # skill
+    skp = sub.add_parser("skill", help="Manage skills")
+    skp.add_argument("subcommand", choices=["list","install","unload"])
+    skp.add_argument("skill_id", nargs="?")
+
+    # run (shortcut)
+    rp = sub.add_parser("run", help="Load and run a project TOML file")
+    rp.add_argument("file", nargs="?")
+    rp.add_argument("--follow", "-f", action="store_true")
+
+    # monitor
+    mp = sub.add_parser("monitor", help="Live monitor a project")
+    mp.add_argument("project", nargs="?")
+
+    # logs
+    lp = sub.add_parser("logs", help="Show audit log")
+    lp.add_argument("--tail", "-n", type=int, default=20)
+
+    # user
+    up = sub.add_parser("user", help="User management")
+    up.add_argument("subcommand", choices=["passwd"])
+    up.add_argument("username", nargs="?")
+
+    return p
+
+
+_COMMANDS = {
+    "start":   cmd_start,
+    "login":   cmd_login,
+    "status":  cmd_status,
+    "project": cmd_project,
+    "task":    cmd_task,
+    "agent":   cmd_agent,  # renamed to avoid argparse conflict
+    "secret":  cmd_secret,
+    "skill":   cmd_skill,
+    "run":     cmd_run,
+    "monitor": cmd_monitor,
+    "logs":    cmd_logs,
+    "user":    cmd_user,
+}
+
+
+def main():
+    parser = build_parser()
+    args   = parser.parse_args()
+
+    if args.url:
+        global API_BASE
+        API_BASE = args.url.rstrip("/")
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    fn = _COMMANDS.get(args.command)
+    if not fn:
+        _die(f"Unknown command: {args.command}")
+    fn(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0c0a;
+  --bg2:#0e110e;
+  --bg3:#131713;
+  --surface:#181d18;
+  --surface2:#1e251e;
+  --border:#2a352a;
+  --border2:#3a4a3a;
+  --text:#c8d8c0;
+  --text2:#7a9070;
+  --text3:#4a5e48;
+  --green:#4caf50;
+  --green2:#2e7d32;
+  --amber:#ffb300;
+  --red:#ef5350;
+  --blue:#42a5f5;
+  --cyan:#26c6da;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+  --radius:3px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+
+/* ── Scanline overlay ── */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ── Layout ── */
+#app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:44px 1fr;height:100vh}
+#topbar{grid-column:1/-1;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;z-index:10}
+#sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#main{overflow-y:auto;background:var(--bg)}
+
+/* ── Topbar ── */
+.topbar-logo{font-size:15px;font-weight:600;letter-spacing:.08em;color:var(--green);display:flex;align-items:center;gap:8px}
+.topbar-logo::before{content:'';width:8px;height:8px;background:var(--green);border-radius:50%;animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.topbar-sep{width:1px;height:20px;background:var(--border)}
+.topbar-status{font-size:11px;color:var(--text3);letter-spacing:.06em}
+.topbar-status span{color:var(--green)}
+.topbar-spacer{flex:1}
+.topbar-user{font-size:11px;color:var(--text3)}
+.topbar-user strong{color:var(--text2)}
+.btn-logout{font-family:var(--mono);font-size:11px;color:var(--text3);background:none;border:1px solid var(--border);padding:3px 8px;cursor:pointer;border-radius:var(--radius);letter-spacing:.04em}
+.btn-logout:hover{border-color:var(--border2);color:var(--text)}
+
+/* ── Sidebar ── */
+.sidebar-section{padding:12px 0 4px;font-size:10px;letter-spacing:.12em;color:var(--text3);padding-left:16px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 16px;cursor:pointer;color:var(--text2);font-size:12px;letter-spacing:.04em;border-left:2px solid transparent;transition:all .12s}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--surface);color:var(--green);border-left-color:var(--green)}
+.nav-item .nav-icon{width:14px;text-align:center;font-size:11px;opacity:.7}
+.nav-item.active .nav-icon{opacity:1}
+.sidebar-bottom{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;border-top:1px solid var(--border);margin-top:auto}
+.daemon-info{font-size:10px;color:var(--text3);line-height:2}
+.daemon-info span{color:var(--text2)}
+
+/* ── Main content ── */
+.page{display:none;padding:24px;animation:fadein .15s ease}
+.page.active{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
+.page-title{font-size:11px;letter-spacing:.12em;color:var(--text3);text-transform:uppercase;margin-bottom:4px}
+.page-heading{font-size:20px;font-weight:500;font-family:var(--sans);color:var(--text);letter-spacing:-.01em}
+
+/* ── Buttons ── */
+.btn{font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:6px 14px;border:1px solid;cursor:pointer;border-radius:var(--radius);transition:all .12s}
+.btn-primary{background:var(--green2);border-color:var(--green);color:#fff}
+.btn-primary:hover{background:var(--green);color:#000}
+.btn-ghost{background:transparent;border-color:var(--border2);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--border2);color:var(--text);background:var(--surface)}
+.btn-danger{background:transparent;border-color:#c62828;color:#ef9a9a}
+.btn-danger:hover{background:#b71c1c;color:#fff}
+.btn-sm{padding:4px 10px;font-size:10px}
+
+/* ── Stat cards ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
+.stat-card{background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:4px}
+.stat-label{font-size:10px;letter-spacing:.1em;color:var(--text3)}
+.stat-value{font-size:24px;font-weight:500;font-family:var(--sans);color:var(--text)}
+.stat-value.green{color:var(--green)}
+.stat-value.amber{color:var(--amber)}
+.stat-value.red{color:var(--red)}
+.stat-sub{font-size:10px;color:var(--text3)}
+
+/* ── Tables ── */
+.table-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.table-header{background:var(--surface);padding:10px 16px;font-size:10px;letter-spacing:.1em;color:var(--text3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+table{width:100%;border-collapse:collapse}
+th{background:var(--surface2);padding:8px 14px;text-align:left;font-size:10px;letter-spacing:.1em;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr{transition:background .08s}
+tr:hover td{background:var(--surface)}
+tr.clickable{cursor:pointer}
+
+/* ── Status badges ── */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.08em;padding:2px 8px;border-radius:var(--radius);border:1px solid}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%}
+.badge-running{color:var(--amber);border-color:rgba(255,179,0,.3);background:rgba(255,179,0,.06)}
+.badge-running::before{background:var(--amber);animation:blink 1s ease-in-out infinite}
+.badge-done{color:var(--green);border-color:rgba(76,175,80,.3);background:rgba(76,175,80,.06)}
+.badge-done::before{background:var(--green)}
+.badge-idle{color:var(--text3);border-color:var(--border);background:transparent}
+.badge-idle::before{background:var(--text3)}
+.badge-failed{color:var(--red);border-color:rgba(239,83,80,.3);background:rgba(239,83,80,.06)}
+.badge-failed::before{background:var(--red)}
+.badge-pending{color:var(--text2);border-color:var(--border);background:transparent}
+.badge-pending::before{background:var(--border2)}
+.badge-skipped{color:var(--text3);border-color:var(--border)}
+.badge-skipped::before{background:var(--border)}
+
+/* ── DAG visual ── */
+.dag{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
+.dag-row{display:flex;gap:2px}
+.dag-node{flex:1;background:var(--surface);border:1px solid var(--border);padding:10px 12px;border-radius:var(--radius);cursor:pointer;transition:border-color .12s;position:relative}
+.dag-node:hover{border-color:var(--border2)}
+.dag-node.selected{border-color:var(--green)}
+.dag-node.status-done{border-left:3px solid var(--green)}
+.dag-node.status-running{border-left:3px solid var(--amber)}
+.dag-node.status-failed{border-left:3px solid var(--red)}
+.dag-node.status-pending{border-left:3px solid var(--border)}
+.dag-node.status-skipped{opacity:.5}
+.dag-node-name{font-size:12px;color:var(--text);margin-bottom:4px}
+.dag-node-meta{font-size:10px;color:var(--text3);display:flex;gap:10px}
+.dag-arrow{display:flex;align-items:center;padding:0 4px;color:var(--text3);font-size:10px}
+
+/* ── Agent messages ── */
+.messages{display:flex;flex-direction:column;gap:2px;max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px}
+.message{padding:6px 10px;border-radius:var(--radius);font-size:11px;line-height:1.6}
+.message.user{background:var(--surface2);color:var(--text2);border-left:2px solid var(--border2)}
+.message.assistant{background:rgba(76,175,80,.05);color:var(--text);border-left:2px solid var(--green2)}
+.message.system{background:transparent;color:var(--text3);font-size:10px;border-left:2px solid var(--border)}
+.msg-role{font-size:9px;letter-spacing:.1em;color:var(--text3);margin-bottom:3px}
+
+/* ── Event log ── */
+.event-log{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.event-row{display:grid;grid-template-columns:80px 1fr 140px;gap:12px;padding:7px 14px;border-bottom:1px solid var(--border);font-size:11px;align-items:center}
+.event-row:last-child{border-bottom:none}
+.event-row:hover{background:var(--surface)}
+.event-ts{color:var(--text3);font-size:10px}
+.event-topic{color:var(--text2);letter-spacing:.02em}
+.event-topic.project{color:var(--blue)}
+.event-topic.task{color:var(--cyan)}
+.event-topic.agent{color:var(--green)}
+.event-topic.skill{color:var(--amber)}
+.event-topic.system{color:var(--text3)}
+.event-source{color:var(--text3);font-size:10px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Skills grid ── */
+.skills-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.skill-card{background:var(--surface);padding:14px;cursor:default;transition:background .1s}
+.skill-card:hover{background:var(--surface2)}
+.skill-id{font-size:11px;color:var(--text);margin-bottom:4px}
+.skill-status{font-size:10px;color:var(--green)}
+
+/* ── Panels / details ── */
+.detail-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.detail-kv{display:grid;grid-template-columns:120px 1fr;row-gap:8px;font-size:12px}
+.detail-key{color:var(--text3);letter-spacing:.04em}
+.detail-val{color:var(--text)}
+.detail-val.mono{font-family:var(--mono)}
+
+/* ── Output block ── */
+.output-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:11px;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;line-height:1.7}
+
+/* ── Forms ── */
+.form-group{margin-bottom:14px}
+.form-label{font-size:10px;letter-spacing:.08em;color:var(--text3);display:block;margin-bottom:5px}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;border-radius:var(--radius);outline:none;transition:border-color .12s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--green2)}
+.form-select option{background:var(--surface2)}
+.form-textarea{min-height:80px;resize:vertical;line-height:1.6}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:24px;min-width:380px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal-title{font-size:14px;color:var(--text);margin-bottom:16px;font-family:var(--sans)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+
+/* ── Login page ── */
+#login-page{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:0}
+#login-page.hidden{display:none}
+.login-box{background:var(--bg2);border:1px solid var(--border);padding:36px 32px;width:320px;border-radius:var(--radius)}
+.login-logo{font-size:18px;font-weight:600;color:var(--green);letter-spacing:.06em;margin-bottom:6px}
+.login-sub{font-size:11px;color:var(--text3);margin-bottom:28px}
+.login-err{color:var(--red);font-size:11px;margin-top:10px;display:none}
+
+/* ── Refresh indicator ── */
+.refresh-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);display:inline-block;transition:background .3s}
+.refresh-dot.active{background:var(--green);animation:blink .5s}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:12px;padding:10px 16px;border-radius:var(--radius);transform:translateY(60px);opacity:0;transition:all .2s;z-index:500;pointer-events:none}
+#toast.show{transform:none;opacity:1}
+#toast.err{border-color:var(--red);color:#ef9a9a}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ── Util ── */
+.row{display:flex;gap:8px;align-items:center}
+.spacer{flex:1}
+.text-muted{color:var(--text3)}
+.text-mono{font-family:var(--mono)}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{color:var(--text3);font-size:12px;padding:32px;text-align:center}
+.section-title{font-size:10px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px}
+hr.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-page">
+  <div class="login-box">
+    <div class="login-logo">⬡ AgentOS</div>
+    <div class="login-sub">Agentic AI Operating System</div>
+    <div class="form-group">
+      <label class="form-label">USERNAME</label>
+      <input class="form-input" id="login-user" value="admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">PASSWORD</label>
+      <input class="form-input" type="password" id="login-pass" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">AUTHENTICATE</button>
+    <div class="login-err" id="login-err">Invalid credentials</div>
+  </div>
+  <div style="margin-top:16px;font-size:10px;color:var(--text3)">default: admin / agentadmin</div>
+</div>
+
+<!-- App shell (hidden until logged in) -->
+<div id="app" style="display:none">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="topbar-logo">⬡ AGENTOS</div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-status" id="topbar-status">connecting…</div>
+    <div class="topbar-spacer"></div>
+    <span class="refresh-dot" id="refresh-dot"></span>
+    <div class="topbar-sep"></div>
+    <div class="topbar-user">logged in as <strong id="topbar-user">—</strong></div>
+    <button class="btn-logout" onclick="doLogout()">LOGOUT</button>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-section">NAVIGATION</div>
+    <div class="nav-item active" data-page="overview" onclick="nav(this)">
+      <span class="nav-icon">◈</span> Overview
+    </div>
+    <div class="nav-item" data-page="projects" onclick="nav(this)">
+      <span class="nav-icon">▣</span> Projects
+    </div>
+    <div class="nav-item" data-page="agents" onclick="nav(this)">
+      <span class="nav-icon">◉</span> Agents
+    </div>
+    <div class="nav-item" data-page="events" onclick="nav(this)">
+      <span class="nav-icon">≡</span> Event log
+    </div>
+    <div class="nav-item" data-page="skills" onclick="nav(this)">
+      <span class="nav-icon">⬡</span> Skills
+    </div>
+
+    <div style="flex:1"></div>
+    <div class="sidebar-bottom">
+      <div class="daemon-info">
+        <div>uptime <span id="si-uptime">—</span></div>
+        <div>version <span id="si-version">—</span></div>
+        <div>port <span id="si-port">7777</span></div>
+        <div style="margin-top:6px;font-size:9px;opacity:.5" id="si-arch">ARM · x86_64</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Overview -->
+    <div class="page active" id="page-overview">
+      <div class="page-header">
+        <div>
+          <div class="page-title">DASHBOARD</div>
+          <div class="page-heading">Overview</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('new-project')">+ New project</button>
+      </div>
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-label">PROJECTS</div><div class="stat-value" id="st-projects">—</div></div>
+        <div class="stat-card"><div class="stat-label">RUNNING</div><div class="stat-value amber" id="st-running">—</div></div>
+        <div class="stat-card"><div class="stat-label">AGENTS TODAY</div><div class="stat-value" id="st-agents">—</div></div>
+        <div class="stat-card"><div class="stat-label">EVENTS (24H)</div><div class="stat-value" id="st-events">—</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header">
+          <span>RECENT PROJECTS</span>
+          <span class="text-muted" style="font-size:10px">click row to open</span>
+        </div>
+        <table>
+          <thead><tr>
+            <th>NAME</th><th>STATUS</th><th>SCHEDULE</th><th>TASKS</th><th>UPDATED</th><th></th>
+          </tr></thead>
+          <tbody id="overview-projects"></tbody>
+        </table>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header"><span>LIVE ACTIVITY</span></div>
+        <div id="overview-events"></div>
+      </div>
+    </div>
+
+    <!-- Projects detail -->
+    <div class="page" id="page-projects">
+      <div id="projects-list-view">
+        <div class="page-header">
+          <div>
+            <div class="page-title">MANAGEMENT</div>
+            <div class="page-heading">Projects</div>
+          </div>
+          <button class="btn btn-primary" onclick="openModal('new-project')">+ New project</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>NAME</th><th>STATUS</th><th>SCHEDULE</th><th>DESCRIPTION</th><th>CREATED</th><th>ACTIONS</th>
+            </tr></thead>
+            <tbody id="projects-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Project detail view -->
+      <div id="project-detail-view" style="display:none">
+        <div class="page-header">
+          <div>
+            <div class="page-title" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px" onclick="backToProjects()">
+              ← PROJECTS
+            </div>
+            <div class="page-heading" id="pd-name">—</div>
+          </div>
+          <div class="row">
+            <button class="btn btn-ghost btn-sm" onclick="runProject()">▶ Run now</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProject()">Delete</button>
+          </div>
+        </div>
+
+        <div class="detail-panel">
+          <div class="detail-kv" id="pd-kv"></div>
+        </div>
+
+        <div class="section-title">TASK DAG</div>
+        <div class="dag" id="pd-dag"></div>
+
+        <div class="section-title" style="margin-top:20px">AGENTS</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ROLE</th><th>MODEL</th><th>STATE</th><th>TOKENS</th><th>STARTED</th><th></th></tr></thead>
+            <tbody id="pd-agents"></tbody>
+          </table>
+        </div>
+
+        <div class="section-title" style="margin-top:4px">SECRETS</div>
+        <div class="detail-panel" id="pd-secrets-panel">
+          <div id="pd-secrets" style="margin-bottom:12px"></div>
+          <div class="row">
+            <input class="form-input" id="new-secret-key" placeholder="KEY_NAME" style="width:160px">
+            <input class="form-input" type="password" id="new-secret-val" placeholder="value">
+            <button class="btn btn-ghost btn-sm" onclick="addSecret()">+ Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agents -->
+    <div class="page" id="page-agents">
+      <div id="agents-list-view">
+        <div class="page-header">
+          <div>
+            <div class="page-title">RUNTIME</div>
+            <div class="page-heading">Agents</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>PROJECT</th><th>ROLE</th><th>MODEL</th><th>STATE</th><th>TOKENS</th><th>STARTED</th><th></th>
+            </tr></thead>
+            <tbody id="agents-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Agent detail -->
+      <div id="agent-detail-view" style="display:none">
+        <div class="page-header">
+          <div>
+            <div class="page-title" style="cursor:pointer" onclick="backToAgents()">← AGENTS</div>
+            <div class="page-heading" id="ag-title">Agent</div>
+          </div>
+        </div>
+        <div class="detail-panel">
+          <div class="detail-kv" id="ag-kv"></div>
+        </div>
+        <div class="section-title" style="margin-top:4px">OUTPUT</div>
+        <div class="output-block" id="ag-output">—</div>
+        <div class="section-title" style="margin-top:16px">CONVERSATION</div>
+        <div class="messages" id="ag-messages"></div>
+      </div>
+    </div>
+
+    <!-- Events -->
+    <div class="page" id="page-events">
+      <div class="page-header">
+        <div>
+          <div class="page-title">AUDIT</div>
+          <div class="page-heading">Event log</div>
+        </div>
+        <div class="row">
+          <select class="form-select" id="event-filter" onchange="loadEvents()" style="width:180px">
+            <option value="">All topics</option>
+            <option value="project.started">project.started</option>
+            <option value="project.stopped">project.stopped</option>
+            <option value="task.started">task.started</option>
+            <option value="task.done">task.done</option>
+            <option value="task.failed">task.failed</option>
+            <option value="agent.spawned">agent.spawned</option>
+            <option value="agent.done">agent.done</option>
+            <option value="skill.called">skill.called</option>
+            <option value="system.heartbeat">system.heartbeat</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="loadEvents()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="event-log" id="events-log"></div>
+    </div>
+
+    <!-- Skills -->
+    <div class="page" id="page-skills">
+      <div class="page-header">
+        <div>
+          <div class="page-title">INTEGRATIONS</div>
+          <div class="page-heading">Skills</div>
+        </div>
+      </div>
+      <div class="skills-grid" id="skills-grid"></div>
+      <hr class="divider">
+      <div class="section-title">ADD CUSTOM SKILL</div>
+      <div class="detail-panel" style="font-size:11px;color:var(--text2);line-height:2">
+        Drop a <code style="color:var(--green)">handler.py</code> into <code style="color:var(--green)">skills/&lt;skill_id&gt;/</code> and restart agentd.<br>
+        The module must define <code style="color:var(--green)">SKILL_ID = "my.skill"</code> and <code style="color:var(--green)">def handle(params, secrets) -&gt; dict</code>.
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Modals -->
+<div class="modal-overlay" id="modal-new-project">
+  <div class="modal">
+    <div class="modal-title">New project</div>
+    <div class="form-group">
+      <label class="form-label">NAME</label>
+      <input class="form-input" id="np-name" placeholder="my-project">
+    </div>
+    <div class="form-group">
+      <label class="form-label">DESCRIPTION</label>
+      <input class="form-input" id="np-desc" placeholder="What does this project do?">
+    </div>
+    <div class="form-group">
+      <label class="form-label">SCHEDULE (optional)</label>
+      <input class="form-input" id="np-schedule" placeholder="@every 1h  or  @daily">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('new-project')">Cancel</button>
+      <button class="btn btn-primary" onclick="createProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  token: localStorage.getItem('agentd_token') || '',
+  user: localStorage.getItem('agentd_user') || '',
+  currentProject: null,
+  currentAgent: null,
+  pollTimer: null,
+};
+
+// ── API ────────────────────────────────────────────────────────────────────
+const API = '/api';
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (S.token) opts.headers['Authorization'] = 'Bearer ' + S.token;
+  if (body)   opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401) { doLogout(); return null; }
+  if (!r.ok) { toast(data.error || 'Request failed', true); return null; }
+  return data;
+}
+
+const GET    = (p)    => api('GET', p);
+const POST   = (p, b) => api('POST', p, b);
+const DELETE = (p)    => api('DELETE', p);
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const u = q('#login-user').value.trim();
+  const p = q('#login-pass').value;
+  const r = await fetch(API + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u, password: p }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (d.token) {
+    S.token = d.token;
+    S.user  = u;
+    localStorage.setItem('agentd_token', d.token);
+    localStorage.setItem('agentd_user',  u);
+    showApp();
+  } else {
+    q('#login-err').style.display = 'block';
+  }
+}
+
+function doLogout() {
+  S.token = '';
+  localStorage.removeItem('agentd_token');
+  localStorage.removeItem('agentd_user');
+  clearInterval(S.pollTimer);
+  q('#app').style.display = 'none';
+  q('#login-page').classList.remove('hidden');
+}
+
+// ── App boot ───────────────────────────────────────────────────────────────
+function showApp() {
+  q('#login-page').classList.add('hidden');
+  q('#app').style.display = 'grid';
+  q('#topbar-user').textContent = S.user;
+  loadAll();
+  S.pollTimer = setInterval(loadAll, 4000);
+}
+
+async function loadAll() {
+  pulse();
+  await Promise.all([loadStatus(), loadOverview(), loadCurrentPage()]);
+}
+
+async function loadCurrentPage() {
+  const active = document.querySelector('.page.active');
+  if (!active) return;
+  const id = active.id.replace('page-', '');
+  if (id === 'overview')  return; // already loaded
+  if (id === 'projects')  return loadProjects();
+  if (id === 'agents')    return loadAgents();
+  if (id === 'events')    return loadEvents();
+  if (id === 'skills')    return loadSkills();
+}
+
+// ── Topbar status ──────────────────────────────────────────────────────────
+async function loadStatus() {
+  const d = await GET('/status');
+  if (!d) return;
+  q('#topbar-status').innerHTML = `status <span>${d.status}</span>  v${d.version}  up ${fmtUptime(d.uptime_s)}`;
+  q('#si-uptime').textContent  = fmtUptime(d.uptime_s);
+  q('#si-version').textContent = d.version;
+  if (d.arch) q('#si-arch').textContent = d.arch;
+}
+
+// ── Overview ───────────────────────────────────────────────────────────────
+async function loadOverview() {
+  if (!q('#page-overview').classList.contains('active')) return;
+  const [projects, agents, events] = await Promise.all([
+    GET('/projects'),
+    GET('/agents'),
+    GET('/events?limit=100'),
+  ]);
+  if (!projects) return;
+
+  const running = projects.filter(p => p.status === 'running').length;
+  const today   = Date.now()/1000 - 86400;
+  const agToday = (agents||[]).filter(a => a.created_at > today).length;
+  const evToday = (events||[]).filter(e => e.created_at > today).length;
+
+  q('#st-projects').textContent = projects.length;
+  q('#st-running').textContent  = running;
+  q('#st-agents').textContent   = agToday;
+  q('#st-events').textContent   = evToday;
+
+  // Projects table
+  const tbody = q('#overview-projects');
+  tbody.innerHTML = projects.slice(0,8).map(p => `
+    <tr class="clickable" onclick="openProject('${p.id}')">
+      <td>${p.name}</td>
+      <td>${badge(p.status)}</td>
+      <td class="text-muted">${p.schedule || '—'}</td>
+      <td class="text-muted">—</td>
+      <td class="text-muted">${fmtTs(p.updated_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();runProjectById('${p.id}')">▶</button></td>
+    </tr>`).join('') || `<tr><td colspan="6" class="empty">No projects yet</td></tr>`;
+
+  // Event feed
+  const feed = q('#overview-events');
+  feed.innerHTML = (events||[]).slice(0,10).map(e => eventRow(e)).join('') ||
+    '<div class="empty">No events yet</div>';
+}
+
+// ── Projects ───────────────────────────────────────────────────────────────
+async function loadProjects() {
+  const projects = await GET('/projects');
+  if (!projects) return;
+  q('#projects-table').innerHTML = projects.map(p => `
+    <tr class="clickable" onclick="openProject('${p.id}')">
+      <td><strong style="color:var(--text)">${p.name}</strong></td>
+      <td>${badge(p.status)}</td>
+      <td class="text-muted">${p.schedule || '—'}</td>
+      <td class="text-muted truncate" style="max-width:200px">${p.description || '—'}</td>
+      <td class="text-muted">${fmtTs(p.created_at)}</td>
+      <td>
+        <div class="row">
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();runProjectById('${p.id}')">▶ Run</button>
+          <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteProjectById('${p.id}','${p.name}')">✕</button>
+        </div>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="6" class="empty">No projects. Create one above.</td></tr>`;
+}
+
+async function openProject(id) {
+  nav(document.querySelector('[data-page="projects"]'));
+  S.currentProject = id;
+  q('#projects-list-view').style.display = 'none';
+  q('#project-detail-view').style.display = 'block';
+  await refreshProjectDetail();
+}
+
+async function refreshProjectDetail() {
+  const id = S.currentProject;
+  if (!id) return;
+  const [p, agents, secrets] = await Promise.all([
+    GET('/projects/' + id),
+    GET('/agents?project_id=' + id),
+    GET('/projects/' + id + '/secrets'),
+  ]);
+  if (!p) return;
+
+  q('#pd-name').textContent = p.name;
+  q('#pd-kv').innerHTML = kv({
+    'ID':          `<span class="text-mono" style="font-size:11px">${p.id}</span>`,
+    'Status':      badge(p.status),
+    'Schedule':    p.schedule || '—',
+    'Description': p.description || '—',
+    'Created':     fmtTs(p.created_at),
+  });
+
+  // DAG
+  const tasks = p.tasks || [];
+  const dagEl = q('#pd-dag');
+  if (!tasks.length) { dagEl.innerHTML = '<div class="empty">No tasks defined</div>'; }
+  else {
+    // Topological layer layout
+    const layers = buildLayers(tasks);
+    dagEl.innerHTML = layers.map((layer, li) => `
+      <div class="dag-row">
+        ${layer.map(t => `
+          <div class="dag-node status-${t.status}" onclick="openTask('${t.id}')">
+            <div class="dag-node-name">${t.name}</div>
+            <div class="dag-node-meta">
+              <span>${badge(t.status)}</span>
+              ${t.started_at ? `<span class="text-muted">${fmtTs(t.started_at)}</span>` : ''}
+            </div>
+          </div>`).join('<div class="dag-arrow">→</div>')}
+      </div>`).join('');
+  }
+
+  // Agents
+  q('#pd-agents').innerHTML = (agents||[]).map(a => `
+    <tr class="clickable" onclick="openAgent('${a.id}')">
+      <td><span style="color:var(--cyan)">${a.role}</span></td>
+      <td class="text-muted truncate" style="max-width:180px">${a.model}</td>
+      <td>${badge(a.state)}</td>
+      <td class="text-muted">${a.token_usage || 0}</td>
+      <td class="text-muted">${fmtTs(a.started_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAgent('${a.id}')">inspect</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty text-muted">No agents yet</td></tr>';
+
+  // Secrets
+  const keys = secrets?.keys || [];
+  q('#pd-secrets').innerHTML = keys.length
+    ? keys.map(k => `
+        <div class="row" style="margin-bottom:6px">
+          <span style="color:var(--cyan);font-size:11px">●</span>
+          <span style="font-size:12px;flex:1">${k}</span>
+          <button class="btn btn-danger btn-sm" onclick="removeSecret('${k}')">✕</button>
+        </div>`).join('')
+    : '<div class="text-muted" style="font-size:11px;margin-bottom:8px">No secrets stored</div>';
+}
+
+function backToProjects() {
+  S.currentProject = null;
+  q('#projects-list-view').style.display = 'block';
+  q('#project-detail-view').style.display = 'none';
+  loadProjects();
+}
+
+async function runProject() { await runProjectById(S.currentProject); }
+async function runProjectById(id) {
+  const r = await POST('/projects/' + id + '/run', {});
+  if (r) toast('Project started ▶');
+}
+
+async function deleteProject() { await deleteProjectById(S.currentProject, q('#pd-name').textContent); }
+async function deleteProjectById(id, name) {
+  if (!confirm(`Delete project "${name}"?`)) return;
+  await DELETE('/projects/' + id);
+  toast('Project deleted');
+  backToProjects();
+}
+
+async function createProject() {
+  const name = q('#np-name').value.trim();
+  if (!name) return toast('Name required', true);
+  const r = await POST('/projects', {
+    name,
+    description: q('#np-desc').value,
+    schedule:    q('#np-schedule').value || undefined,
+  });
+  if (r) {
+    closeModal('new-project');
+    toast('Project created: ' + r.name);
+    loadProjects();
+    q('#np-name').value = q('#np-desc').value = q('#np-schedule').value = '';
+  }
+}
+
+async function addSecret() {
+  const key = q('#new-secret-key').value.trim();
+  const val = q('#new-secret-val').value;
+  if (!key || !val) return toast('Key and value required', true);
+  const r = await POST('/projects/' + S.currentProject + '/secrets', { key, value: val });
+  if (r) {
+    q('#new-secret-key').value = q('#new-secret-val').value = '';
+    toast('Secret stored');
+    refreshProjectDetail();
+  }
+}
+
+async function removeSecret(key) {
+  if (!confirm(`Delete secret "${key}"?`)) return;
+  await DELETE('/projects/' + S.currentProject + '/secrets/' + key);
+  toast('Secret deleted');
+  refreshProjectDetail();
+}
+
+// ── Agents ────────────────────────────────────────────────────────────────
+async function loadAgents() {
+  if (!q('#page-agents').classList.contains('active')) return;
+  if (q('#agent-detail-view').style.display !== 'none') return refreshAgentDetail();
+  const agents = await GET('/agents');
+  if (!agents) return;
+  q('#agents-table').innerHTML = agents.map(a => `
+    <tr class="clickable" onclick="openAgent('${a.id}')">
+      <td class="text-mono" style="font-size:10px;color:var(--text3)">${a.id.slice(0,8)}</td>
+      <td class="text-muted truncate" style="max-width:100px">${a.project_id.slice(0,8)}</td>
+      <td style="color:var(--cyan)">${a.role}</td>
+      <td class="text-muted truncate" style="max-width:140px">${a.model}</td>
+      <td>${badge(a.state)}</td>
+      <td class="text-muted">${a.token_usage || 0}</td>
+      <td class="text-muted">${fmtTs(a.started_at)}</td>
+      <td><button class="btn btn-ghost btn-sm">inspect</button></td>
+    </tr>`).join('') || `<tr><td colspan="8" class="empty">No agents yet</td></tr>`;
+}
+
+async function openAgent(id) {
+  S.currentAgent = id;
+  if (q('#page-agents').classList.contains('active')) {
+    q('#agents-list-view').style.display = 'none';
+    q('#agent-detail-view').style.display = 'block';
+  }
+  await refreshAgentDetail();
+}
+
+async function refreshAgentDetail() {
+  const id = S.currentAgent;
+  if (!id) return;
+  const a = await GET('/agents/' + id);
+  if (!a) return;
+
+  q('#ag-title').textContent = `${a.role} agent · ${a.id.slice(0,8)}`;
+  q('#ag-kv').innerHTML = kv({
+    'ID':       `<span class="text-mono" style="font-size:10px">${a.id}</span>`,
+    'Task':     `<span class="text-mono" style="font-size:10px">${a.task_id}</span>`,
+    'Role':     `<span style="color:var(--cyan)">${a.role}</span>`,
+    'Model':    a.model,
+    'Provider': a.provider,
+    'State':    badge(a.state),
+    'Tokens':   a.token_usage || 0,
+    'Started':  fmtTs(a.started_at),
+    'Finished': fmtTs(a.finished_at),
+  });
+
+  // Output
+  let out = '—';
+  if (a.output) {
+    try {
+      const parsed = JSON.parse(a.output);
+      out = parsed.output || JSON.stringify(parsed, null, 2);
+    } catch { out = a.output; }
+  }
+  q('#ag-output').textContent = out;
+
+  // Messages
+  const msgs = a.messages || [];
+  q('#ag-messages').innerHTML = msgs.map(m => `
+    <div class="message ${m.role}">
+      <div class="msg-role">${m.role.toUpperCase()}</div>
+      ${escHtml(m.content).slice(0, 600)}${m.content.length > 600 ? '…' : ''}
+    </div>`).join('') || '<div class="text-muted" style="padding:12px;font-size:11px">No messages</div>';
+}
+
+function backToAgents() {
+  S.currentAgent = null;
+  q('#agents-list-view').style.display = 'block';
+  q('#agent-detail-view').style.display = 'none';
+  loadAgents();
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+async function loadEvents() {
+  if (!q('#page-events').classList.contains('active')) return;
+  const topic = q('#event-filter').value;
+  const url   = '/events?limit=80' + (topic ? '&topic=' + topic : '');
+  const events = await GET(url);
+  if (!events) return;
+  q('#events-log').innerHTML = events.map(e => eventRow(e)).join('') ||
+    '<div class="empty">No events matching filter</div>';
+}
+
+function eventRow(e) {
+  const topicClass = e.topic.split('.')[0];
+  let detail = '';
+  try {
+    const p = JSON.parse(e.payload);
+    detail = p.name || (p.agent_id||'').slice(0,8) || (p.project_id||'').slice(0,8) || '';
+  } catch {}
+  return `<div class="event-row">
+    <span class="event-ts">${fmtTs(e.created_at)}</span>
+    <span class="event-topic ${topicClass}">${e.topic}</span>
+    <span class="event-source">${detail}</span>
+  </div>`;
+}
+
+// ── Skills ────────────────────────────────────────────────────────────────
+async function loadSkills() {
+  if (!q('#page-skills').classList.contains('active')) return;
+  const skills = await GET('/skills');
+  if (!skills) return;
+  q('#skills-grid').innerHTML = skills.map(s => `
+    <div class="skill-card">
+      <div class="skill-id">${s.id}</div>
+      <div class="skill-status">● loaded</div>
+    </div>`).join('') || '<div class="empty" style="grid-column:1/-1">No skills loaded</div>';
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function nav(el) {
+  if (!el) return;
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const page = el.dataset.page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  q('#page-' + page).classList.add('active');
+  // Reset sub-views
+  if (page === 'projects') {
+    q('#projects-list-view').style.display = 'block';
+    q('#project-detail-view').style.display = 'none';
+    S.currentProject = null;
+    loadProjects();
+  }
+  if (page === 'agents') {
+    q('#agents-list-view').style.display = 'block';
+    q('#agent-detail-view').style.display = 'none';
+    S.currentAgent = null;
+    loadAgents();
+  }
+  if (page === 'events')  loadEvents();
+  if (page === 'skills')  loadSkills();
+}
+
+function openTask(id) {
+  // Navigate to agents filtered by task – for now open agent list
+  nav(document.querySelector('[data-page="agents"]'));
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openModal(id)  { q('#modal-' + id).classList.add('open'); }
+function closeModal(id) { q('#modal-' + id).classList.remove('open'); }
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  if (e.key === 'Enter' && q('#login-page') && !q('#login-page').classList.contains('hidden')) doLogin();
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function q(sel) { return document.querySelector(sel); }
+
+function badge(status) {
+  const s = (status || 'idle').toLowerCase();
+  return `<span class="badge badge-${s}">${s}</span>`;
+}
+
+function fmtTs(ts) {
+  if (!ts) return '—';
+  const d = new Date(Number(ts) * 1000);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toTimeString().slice(0,8);
+  }
+  return d.toLocaleDateString() + ' ' + d.toTimeString().slice(0,5);
+}
+
+function fmtUptime(s) {
+  if (s < 60)   return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+function kv(obj) {
+  return Object.entries(obj).map(([k,v]) =>
+    `<div class="detail-key">${k}</div><div class="detail-val">${v}</div>`
+  ).join('');
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildLayers(tasks) {
+  // Simple topological layering for DAG display
+  const byName = Object.fromEntries(tasks.map(t => [t.name, t]));
+  const indeg = Object.fromEntries(tasks.map(t => [t.id, 0]));
+  tasks.forEach(t => {
+    const deps = JSON.parse(t.depends_on || '[]');
+    indeg[t.id] = deps.length;
+  });
+  const layers = [];
+  let remaining = [...tasks];
+  while (remaining.length) {
+    const layer = remaining.filter(t => indeg[t.id] === 0);
+    if (!layer.length) { layers.push(remaining); break; }
+    layers.push(layer);
+    const doneIds = new Set(layer.map(t => t.id));
+    const doneNames = new Set(layer.map(t => t.name));
+    remaining = remaining.filter(t => !doneIds.has(t.id));
+    remaining.forEach(t => {
+      const deps = JSON.parse(t.depends_on || '[]');
+      indeg[t.id] = deps.filter(d => !doneIds.has(d) && !doneNames.has(d)).length;
+    });
+  }
+  return layers;
+}
+
+let _toastTimer;
+function toast(msg, err = false) {
+  const el = q('#toast');
+  el.textContent = msg;
+  el.className = 'show' + (err ? ' err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+}
+
+function pulse() {
+  const d = q('#refresh-dot');
+  d.classList.add('active');
+  setTimeout(() => d.classList.remove('active'), 400);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+if (S.token) {
+  showApp();
+} else {
+  // Show login, handle Enter key
+  q('#login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+# AgentOS Project Definition
+# Email triage: fetch → classify → critic → route
+# Run with: agent run examples/email_triage.toml --follow
+
+[project]
+name        = "email-triage"
+description = "Classify and route incoming support emails via Slack"
+schedule    = "@every 15m"
+
+# ── Task DAG ──────────────────────────────────────────────────────────────
+
+[tasks.research]
+name    = "Research recent AI news"
+agents  = ["researcher"]
+
+[tasks.summarise]
+name       = "Summarise findings"
+depends_on = ["research"]
+agents     = ["summariser"]
+
+[tasks.draft]
+name       = "Draft newsletter section"
+depends_on = ["summarise"]
+agents     = ["writer", "critic"]
+
+# ── Agent definitions ────────────────────────────────────────────────────
+# Each [[agents]] block defines a reusable agent.
+# Reference agent IDs inside tasks.agents = [...]
+
+[[agents]]
+id          = "researcher"
+role        = "executor"
+model       = "auto"          # uses first available provider
+provider    = "auto"
+max_tokens  = 512
+temperature = 0.3
+skills      = ["web.scrape", "http.call"]
+prompt      = """
+You are a research agent. Find recent news about AI developments.
+
+Search these sources by calling web.scrape:
+1. https://news.ycombinator.com
+2. https://www.technologyreview.com/topic/artificial-intelligence/
+
+For each page, extract the top 3 headlines and URLs.
+Return a JSON list: [{"title": "...", "url": "...", "source": "..."}]
+
+Use the skill like this:
+{"action": "skill_call", "skill": "web.scrape", "params": {"url": "https://news.ycombinator.com"}}
+"""
+
+[[agents]]
+id          = "summariser"
+role        = "executor"
+model       = "auto"
+provider    = "auto"
+max_tokens  = 600
+temperature = 0.5
+skills      = []
+prompt      = """
+You are a concise summariser. You will receive research results from previous agents.
+
+For each news item, write a 2-sentence summary suitable for a technical newsletter.
+Return JSON: [{"title": "...", "summary": "...", "url": "..."}]
+"""
+
+[[agents]]
+id          = "writer"
+role        = "executor"
+model       = "auto"
+provider    = "auto"
+max_tokens  = 800
+temperature = 0.7
+skills      = ["fs.write"]
+prompt      = """
+You are a newsletter writer. Transform the summarised items into an engaging
+newsletter section titled "This Week in AI".
+
+Write in a clear, professional tone suitable for senior engineers.
+Format as Markdown with headers and bullet points.
+
+After writing, save the output to /tmp/newsletter_draft.md using:
+{"action": "skill_call", "skill": "fs.write", "params": {"path": "/tmp/newsletter_draft.md", "content": "<your markdown>"}}
+"""
+
+[[agents]]
+id          = "critic"
+role        = "critic"
+model       = "auto"
+provider    = "auto"
+max_tokens  = 400
+temperature = 0.3
+skills      = []
+prompt      = """
+You are a quality critic. Review the newsletter draft for:
+- Accuracy and factual claims
+- Tone (professional, not hype)
+- Clarity and readability
+- Any missing context
+
+Return JSON:
+{"approved": true/false, "feedback": "...", "score": 1-10}
+"""

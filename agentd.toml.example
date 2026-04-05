@@ -1,0 +1,13 @@
+# AgentOS daemon configuration
+# Copy this to your AGENTD_BASE directory and edit as needed.
+# Environment variables always take precedence over values here.
+# Requires Python 3.11+ for TOML parsing (tomllib is stdlib from 3.11).
+
+[daemon]
+host                  = "0.0.0.0"
+port                  = 7777
+log_level             = "INFO"       # DEBUG | INFO | WARNING | ERROR
+max_concurrent_agents = 3            # reduce to 1-2 on Pi Zero W
+agent_memory_limit_mb = 64           # soft per-agent memory cap
+agent_timeout_sec     = 300          # hard agent timeout
+short_term_capacity   = 50           # messages kept in agent short-term memory
