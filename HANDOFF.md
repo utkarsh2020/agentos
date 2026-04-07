@@ -374,7 +374,7 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 | `/api/projects/<id>/memory` | GET | List project memories |
 | `/api/projects/<id>/memory/<id>` | DELETE | Delete a memory |
 | `/api/projects/<id>/tasks/<id>` | DELETE | Delete a task |
-| `/api/projects/<id>/schedule` | PUT | Update schedule |
+| `/api/projects/<id>/schedule` | PUT | Update schedule | ✅ Complete |
 | `/api/events/stream` | GET | SSE stream |
 
 ### 7.5 Skill SDK & Registry (v2 Priority 4)

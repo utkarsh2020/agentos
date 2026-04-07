@@ -824,7 +824,27 @@ All endpoints require `Authorization: Bearer <token>` unless noted.
 | `POST` | `/api/projects` | Create project |
 | `GET` | `/api/projects/<id>` | Get project + tasks |
 | `POST` | `/api/projects/<id>/run` | Start project DAG |
+| `PUT` | `/api/projects/<id>/schedule` | Update project schedule (cron expression) |
 | `DELETE` | `/api/projects/<id>` | Delete project |
+
+**Update schedule request:**
+```json
+{
+  "schedule": "@every 1h"
+}
+```
+
+**Update schedule response:**
+```json
+{
+  "id": "project-id",
+  "name": "my-project",
+  "schedule": "@every 1h",
+  "status": "idle"
+}
+```
+
+Required capability: `project:write`
 
 ### Tasks
 
