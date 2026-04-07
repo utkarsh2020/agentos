@@ -287,6 +287,33 @@ def delete_project(h: AgentOSHandler, *_, **params):
     h._send({"deleted": True})
 
 
+@route("PUT", "/api/projects/<id>/schedule")
+def update_project_schedule(h: AgentOSHandler, *_, **params):
+    claims = h._require("project:write")
+    if not claims:
+        return
+    pid = params["id"]
+    p = store.fetch_one("projects", pid)
+    if not p:
+        return h._err("Project not found", 404)
+    body = h._body()
+    schedule = body.get("schedule", "")
+    if schedule:
+        try:
+            next_run = next_run_time(schedule)
+        except Exception:
+            return h._err("Invalid schedule format", 400)
+    else:
+        next_run = None
+    store.update("projects", pid, {"schedule": schedule if schedule else None, "updated_at": time.time()})
+    jobs = store.fetch_where("scheduled_jobs", "project_id = ?", (pid,))
+    if jobs:
+        job_id = jobs[0]["id"]
+        store.update("scheduled_jobs", job_id, {"schedule": schedule if schedule else None, "next_run": next_run})
+    p = store.fetch_one("projects", pid)
+    h._send(p)
+
+
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects/<project_id>/tasks")
