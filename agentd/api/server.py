@@ -4,6 +4,7 @@ Pure stdlib http.server + json. No Flask/FastAPI deps.
 Async-compatible via thread bridge.
 Endpoints cover: projects, tasks, agents, skills, secrets, events, auth.
 """
+from __future__ import annotations
 import asyncio
 import json
 import logging
@@ -297,21 +298,52 @@ def update_project_schedule(h: AgentOSHandler, *_, **params):
     if not p:
         return h._err("Project not found", 404)
     body = h._body()
-    schedule = body.get("schedule", "")
-    if schedule:
-        try:
-            next_run = next_run_time(schedule)
-        except Exception:
-            return h._err("Invalid schedule format", 400)
-    else:
-        next_run = None
-    store.update("projects", pid, {"schedule": schedule if schedule else None, "updated_at": time.time()})
-    jobs = store.fetch_where("scheduled_jobs", "project_id = ?", (pid,))
+    sched = body.get("schedule", "").strip()
+    if not sched:
+        return h._err("schedule required")
+    try:
+        next_run = next_run_time(sched)
+    except Exception:
+        return h._err("Invalid schedule format", 400)
+    store.update("projects", pid, schedule=sched, updated_at=time.time())
+    jobs = store.raw_query("SELECT id FROM scheduled_jobs WHERE project_id=?", (pid,))
     if jobs:
-        job_id = jobs[0]["id"]
-        store.update("scheduled_jobs", job_id, {"schedule": schedule if schedule else None, "next_run": next_run})
-    p = store.fetch_one("projects", pid)
-    h._send(p)
+        store.raw_query(
+            "UPDATE scheduled_jobs SET schedule=?, next_run=?, enabled=1 WHERE project_id=?",
+            (sched, next_run, pid)
+        )
+    else:
+        store.insert("scheduled_jobs", project_id=pid, schedule=sched, next_run=next_run)
+    h._send({"updated": True, "schedule": sched})
+
+
+# ── Memory ────────────────────────────────────────────────────────────────
+
+@route("GET", "/api/projects/<project_id>/memory")
+def list_project_memory(h: AgentOSHandler, path, qs, **params):
+    if not h._require("project:read"):
+        return
+    limit = int(qs.get("limit", [50])[0])
+    rows = store.raw_query(
+        "SELECT id, agent_id, content, importance, created_at FROM memory "
+        "WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
+        (params["project_id"], limit)
+    )
+    h._send(rows)
+
+
+@route("DELETE", "/api/projects/<project_id>/memory/<id>")
+def delete_memory(h: AgentOSHandler, *_, **params):
+    if not h._require("project:write"):
+        return
+    rows = store.raw_query(
+        "SELECT id FROM memory WHERE id=? AND project_id=?",
+        (params["id"], params["project_id"])
+    )
+    if not rows:
+        return h._err("Not found", 404)
+    store.raw_query("DELETE FROM memory WHERE id=?", (params["id"],))
+    h._send({"deleted": True})
 
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
@@ -337,6 +369,17 @@ def create_task(h: AgentOSHandler, *_, **params):
         created_at=time.time(),
     )
     h._send(store.fetch_one("tasks", tid), 201)
+
+
+@route("DELETE", "/api/projects/<project_id>/tasks/<id>")
+def delete_task(h: AgentOSHandler, *_, **params):
+    if not h._require("task:write"):
+        return
+    t = store.fetch_one("tasks", params["id"])
+    if not t or t.get("project_id") != params["project_id"]:
+        return h._err("Not found", 404)
+    store.delete("tasks", params["id"])
+    h._send({"deleted": True})
 
 
 @route("GET", "/api/tasks/<id>")
