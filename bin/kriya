@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-AgentOS CLI – agent <command> [subcommand] [options]
+Kriya CLI – agent <command> [subcommand] [options]
 
 Commands:
-  start                     Start the agentd daemon
+  start                     Start the kriya daemon
   status                    Show daemon status
   project  create|list|run|load|delete|status
   task     add|list|status
@@ -27,14 +27,14 @@ from pathlib import Path
 
 # ── Config ─────────────────────────────────────────────────────────────────
 
-API_BASE = os.environ.get("AGENTD_URL", "http://127.0.0.1:7777")
-TOKEN_FILE = Path.home() / ".agentd_token"
+API_BASE = os.environ.get("KRIYA_URL", "http://127.0.0.1:7777")
+TOKEN_FILE = Path.home() / ".kriya_token"
 
 
 def _token() -> str:
     if TOKEN_FILE.exists():
         return TOKEN_FILE.read_text().strip()
-    return os.environ.get("AGENTD_TOKEN", "")
+    return os.environ.get("KRIYA_TOKEN", "")
 
 
 def _save_token(tok: str):
@@ -63,7 +63,7 @@ def _req(method: str, path: str, body: dict = None, auth: bool = True) -> dict:
             err = {"error": raw[:200]}
         _die(f"API error {e.code}: {err.get('error', raw[:100])}")
     except urllib.error.URLError as e:
-        _die(f"Cannot reach agentd at {API_BASE} – is it running?\n  Start with: agent start")
+        _die(f"Cannot reach kriya at {API_BASE} – is it running?\n  Start with: agent start")
 
 
 def get(path, **kw):    return _req("GET",    path, **kw)
@@ -131,11 +131,11 @@ def _ts(t) -> str:
 # ── Commands ───────────────────────────────────────────────────────────────
 
 def cmd_start(args):
-    """Start the agentd daemon in the foreground."""
-    _head("Starting AgentOS daemon …")
+    """Start the kriya daemon in the foreground."""
+    _head("Starting Kriya daemon …")
     # Import and run directly (no exec needed for Pi Zero)
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from agentd.daemon import main
+    from kriya.daemon import main
     main()
 
 
@@ -154,7 +154,7 @@ def cmd_login(args):
 
 def cmd_status(args):
     resp = get("/api/status")
-    _head("AgentOS Daemon Status")
+    _head("Kriya Daemon Status")
     print(f"  Status   : {_status_color(resp.get('status', '?'))}")
     print(f"  Version  : {resp.get('version', '?')}")
     print(f"  Uptime   : {resp.get('uptime_s', 0)}s")
@@ -252,8 +252,8 @@ def _load_project_file(path: str):
     """Load a project TOML file via the daemon's Python stack directly."""
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from agentd.core.loader import import_project
-        from agentd.core import store
+        from kriya.core.loader import import_project
+        from kriya.core import store
         store.init_db()
         pid = import_project(path)
         p = store.fetch_one("projects", pid)
@@ -416,7 +416,7 @@ def cmd_skill(args):
 
     elif sub == "install":
         _info("Skill installation from registry coming in v2.")
-        _info("For now, drop a handler.py in skills/<skill_id>/ and restart agentd.")
+        _info("For now, drop a handler.py in skills/<skill_id>/ and restart kriya.")
 
     else:
         _die(f"Unknown subcommand: {sub}")
@@ -466,7 +466,7 @@ def _cmd_monitor_project(project_id: str, name: str):
 
             # Clear and redraw
             print("\033[2J\033[H", end="")
-            print(f"{BOLD}  AgentOS Monitor – {name}{RESET}  "
+            print(f"{BOLD}  Kriya Monitor – {name}{RESET}  "
                   f"[{_status_color(p['status'])}]  "
                   f"{_color(time.strftime('%H:%M:%S'), DIM)}")
             print()
@@ -551,14 +551,14 @@ def cmd_user(args):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="agent",
-        description="AgentOS CLI",
+        description="Kriya CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--url", help=f"Daemon URL (default: {API_BASE})")
     sub = p.add_subparsers(dest="command")
 
     # start
-    sub.add_parser("start", help="Start the agentd daemon")
+    sub.add_parser("start", help="Start the kriya daemon")
 
     # login
     sub.add_parser("login", help="Authenticate and save token")

@@ -1,17 +1,17 @@
-# Contributing to AgentOS
+# Contributing to Kriya
 
 ## Development setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/agentos
-cd agentos
+git clone https://github.com/YOUR_USERNAME/kriya
+cd kriya
 
 # No pip install needed — zero external dependencies
 # Just set at least one LLM provider key
 export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY / OLLAMA_MODEL
 
 # Run the daemon
-python3 agentd/daemon.py
+python3 kriya/daemon.py
 
 # Run tests (separate terminal)
 python3 tests/test_suite.py
@@ -20,7 +20,7 @@ python3 tests/test_suite.py
 ## Project layout
 
 ```
-agentd/
+kriya/
   core/         Orchestration: store, bus, agent, scheduler, config, loader
   ai/           LLM abstraction, memory (short-term + long-term vector)
   api/          REST API server + static file serving
@@ -31,7 +31,7 @@ bin/agent       CLI tool
 static/         Web dashboard (single HTML file)
 skills/         Drop custom skill handler.py files here
 tests/          40-test suite (unit + integration)
-deploy/         install.sh, agentd.service
+deploy/         install.sh, kriya.service
 examples/       Example TOML project definitions
 ```
 
@@ -41,15 +41,15 @@ examples/       Example TOML project definitions
 2. Define `SKILL_ID = "namespace.action"` and `def handle(params, secrets) -> dict`
 3. Restart the daemon (or send `SIGHUP`)
 
-See `agentd/integrations/builtin_skills.py` for examples.
+See `kriya/integrations/builtin_skills.py` for examples.
 
 ## Adding an API endpoint
 
-Register a route in `agentd/api/server.py`:
+Register a route in `kriya/api/server.py`:
 
 ```python
 @route("GET", "/api/my-resource")
-def my_resource(h: AgentOSHandler, *_):
+def my_resource(h: KriyaHandler, *_):
     if not h._require("project:read"):
         return
     h._send({"data": "..."})

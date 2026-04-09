@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentOS</title>
+<title>Kriya</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -234,7 +234,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
 <!-- Login -->
 <div id="login-page">
   <div class="login-box">
-    <div class="login-logo">⬡ AgentOS</div>
+    <div class="login-logo">⬡ Kriya</div>
     <div class="login-sub">Agentic AI Operating System</div>
     <div class="form-group">
       <label class="form-label">USERNAME</label>
@@ -255,7 +255,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
 
   <!-- Topbar -->
   <div id="topbar">
-    <div class="topbar-logo">⬡ AGENTOS</div>
+    <div class="topbar-logo">⬡ KRIYA</div>
     <div class="topbar-sep"></div>
     <div class="topbar-status" id="topbar-status">connecting…</div>
     <div class="topbar-spacer"></div>
@@ -470,7 +470,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
       <hr class="divider">
       <div class="section-title">ADD CUSTOM SKILL</div>
       <div class="detail-panel" style="font-size:11px;color:var(--text2);line-height:2">
-        Drop a <code style="color:var(--green)">handler.py</code> into <code style="color:var(--green)">skills/&lt;skill_id&gt;/</code> and restart agentd.<br>
+        Drop a <code style="color:var(--green)">handler.py</code> into <code style="color:var(--green)">skills/&lt;skill_id&gt;/</code> and restart kriya.<br>
         The module must define <code style="color:var(--green)">SKILL_ID = "my.skill"</code> and <code style="color:var(--green)">def handle(params, secrets) -&gt; dict</code>.
       </div>
     </div>
@@ -508,8 +508,8 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
 
 // ── State ──────────────────────────────────────────────────────────────────
 const S = {
-  token: localStorage.getItem('agentd_token') || '',
-  user: localStorage.getItem('agentd_user') || '',
+  token: localStorage.getItem('kriya_token') || '',
+  user: localStorage.getItem('kriya_user') || '',
   currentProject: null,
   currentAgent: null,
   pollTimer: null,
@@ -549,8 +549,8 @@ async function doLogin() {
   if (d.token) {
     S.token = d.token;
     S.user  = u;
-    localStorage.setItem('agentd_token', d.token);
-    localStorage.setItem('agentd_user',  u);
+    localStorage.setItem('kriya_token', d.token);
+    localStorage.setItem('kriya_user',  u);
     showApp();
   } else {
     q('#login-err').style.display = 'block';
@@ -559,8 +559,8 @@ async function doLogin() {
 
 function doLogout() {
   S.token = '';
-  localStorage.removeItem('agentd_token');
-  localStorage.removeItem('agentd_user');
+  localStorage.removeItem('kriya_token');
+  localStorage.removeItem('kriya_user');
   clearInterval(S.pollTimer);
   q('#app').style.display = 'none';
   q('#login-page').classList.remove('hidden');

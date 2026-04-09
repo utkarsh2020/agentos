@@ -1,5 +1,5 @@
 """
-AgentOS – Task DAG scheduler
+Kriya – Task DAG scheduler
 Resolves dependency graphs, dispatches tasks when all deps are DONE.
 Handles cron / @every scheduling.
 Pi Zero: pure asyncio, no external scheduler deps.
@@ -12,11 +12,11 @@ import time
 import uuid
 from typing import Optional
 
-from agentd.core import store
-from agentd.core.bus import get_bus, Message, Topics
-from agentd.core.agent import AgentRunner, AgentConfig
+from kriya.core import store
+from kriya.core.bus import get_bus, Message, Topics
+from kriya.core.agent import AgentRunner, AgentConfig
 
-log = logging.getLogger("agentd.scheduler")
+log = logging.getLogger("kriya.scheduler")
 
 
 # ── Schedule parsing ───────────────────────────────────────────────────────

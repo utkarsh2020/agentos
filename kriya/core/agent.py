@@ -1,5 +1,5 @@
 """
-AgentOS – Agent executor
+Kriya – Agent executor
 Runs one agent turn: load memory → build prompt → call LLM → parse output → persist.
 Handles tool/skill calls embedded in LLM output (JSON action blocks).
 Pi Zero: single-threaded async, no subprocess spawning.
@@ -12,13 +12,13 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Awaitable
 
-from agentd.core import store
-from agentd.core.bus import get_bus, Message, Topics
-from agentd.ai.llm import call_llm, LLMMessage, LLMResponse, LLMError
-from agentd.ai.memory import get_short_term, get_long_term, evict_agent
-from agentd.security.vault import inject_secrets
+from kriya.core import store
+from kriya.core.bus import get_bus, Message, Topics
+from kriya.ai.llm import call_llm, LLMMessage, LLMResponse, LLMError
+from kriya.ai.memory import get_short_term, get_long_term, evict_agent
+from kriya.security.vault import inject_secrets
 
-log = logging.getLogger("agentd.agent")
+log = logging.getLogger("kriya.agent")
 
 
 # ── Agent definition ───────────────────────────────────────────────────────

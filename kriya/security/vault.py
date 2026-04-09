@@ -1,5 +1,5 @@
 """
-AgentOS – Security layer
+Kriya – Security layer
 Vault: AES-256-GCM via Python's hazmat (stdlib only fallback: XOR+HMAC)
 JWT:   HS256 hand-rolled (stdlib hmac + base64)
 RBAC:  five roles with capability checks
@@ -17,8 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from agentd.core.config import VAULT_DIR, get_config
-from agentd.core import store
+from kriya.core.config import VAULT_DIR, get_config
+from kriya.core import store
 
 # ── Role hierarchy ─────────────────────────────────────────────────────────
 ROLES = ["read_only", "skill", "agent", "project_owner", "admin"]
@@ -120,7 +120,7 @@ def authenticate(username: str, password: str) -> Optional[str]:
 def _get_master_key() -> bytes:
     """Derive or load master key. Stored in vault/master.key (encrypted with env passphrase)."""
     key_file = VAULT_DIR / "master.key"
-    passphrase = os.environ.get("AGENTD_VAULT_PASS", "agentd-default-change-me")
+    passphrase = os.environ.get("KRIYA_VAULT_PASS", "kriya-default-change-me")
     
     if key_file.exists():
         raw = key_file.read_bytes()
@@ -194,7 +194,7 @@ def get_secret(project_id: str, key: str) -> Optional[str]:
     path = VAULT_DIR / project_id / f"{key}.enc"
     if not path.exists():
         # Fall back to environment variable
-        env_key = f"AGENTD_SECRET_{project_id.upper()}_{key.upper()}"
+        env_key = f"KRIYA_SECRET_{project_id.upper()}_{key.upper()}"
         return os.environ.get(env_key) or os.environ.get(key)
     return _decrypt(path.read_text())
 
