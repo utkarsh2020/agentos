@@ -1,5 +1,5 @@
 """
-AgentOS – SQLite state store
+Kriya – SQLite state store
 Single WAL-mode database for all persistent state.
 Thread-safe via connection-per-thread pattern.
 Pi Zero safe: stdlib sqlite3 only.
@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, Any
 
-from agentd.core.config import DB_PATH
+from kriya.core.config import DB_PATH
 
 
 # One connection per thread

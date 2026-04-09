@@ -1,22 +1,22 @@
 [Unit]
-Description=AgentOS Daemon
+Description=Kriya Daemon
 Documentation=https://github.com/agentos/agentos
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=agentd
-Group=agentd
-WorkingDirectory=/var/lib/agentd
-ExecStart=/usr/bin/python3 /usr/lib/agentd/agentd/daemon.py
+User=kriya
+Group=kriya
+WorkingDirectory=/var/lib/kriya
+ExecStart=/usr/bin/python3 /usr/lib/kriya/kriya/daemon.py
 Restart=on-failure
 RestartSec=5s
 
 # Environment
-EnvironmentFile=-/etc/agentd/agentd.env
-Environment=AGENTD_BASE=/var/lib/agentd
-Environment=AGENTD_LOG_LEVEL=INFO
+EnvironmentFile=-/etc/kriya/kriya.env
+Environment=KRIYA_BASE=/var/lib/kriya
+Environment=KRIYA_LOG_LEVEL=INFO
 
 # Pi Zero memory safety
 MemoryMax=256M
@@ -26,7 +26,7 @@ MemorySwapMax=0
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/agentd /var/log/agentd /tmp
+ReadWritePaths=/var/lib/kriya /var/log/kriya /tmp
 ProtectHome=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
@@ -34,7 +34,7 @@ AmbientCapabilities=
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=agentd
+SyslogIdentifier=kriya
 
 [Install]
 WantedBy=multi-user.target

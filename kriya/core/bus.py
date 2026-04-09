@@ -1,5 +1,5 @@
 """
-AgentOS – Event bus
+Kriya – Event bus
 Async pub/sub backed by asyncio queues.
 All cross-agent communication routes through here.
 Persists events to SQLite for audit log.
@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict
 from typing import Callable, Awaitable, Any, Optional
 
-from agentd.core import store
+from kriya.core import store
 
 
 # ── Message schema ─────────────────────────────────────────────────────────

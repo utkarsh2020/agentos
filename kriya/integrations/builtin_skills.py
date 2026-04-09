@@ -1,5 +1,5 @@
 """
-AgentOS – Built-in skills (stdlib only)
+Kriya – Built-in skills (stdlib only)
 Registered at daemon startup.
 Each skill: handler(params: dict, secrets: dict) -> dict
 """
@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 from pathlib import Path
 
-log = logging.getLogger("agentd.skills")
+log = logging.getLogger("kriya.skills")
 
 
 # ── http.call ──────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ def skill_web_scrape(params: dict, secrets: dict) -> dict:
         return {"error": "url required"}
 
     headers = {
-        "User-Agent": "AgentOS/0.1 (+https://github.com/agentos)",
+        "User-Agent": "Kriya/0.3 (+https://github.com/kriya)",
         "Accept": "text/html,application/xhtml+xml",
     }
     req = urllib.request.Request(url, headers=headers)
@@ -109,7 +109,7 @@ def skill_fs_write(params: dict, secrets: dict) -> dict:
         return {"error": "path required"}
     # Safety: only allow writes under /tmp or configured project dir
     p = Path(path).resolve()
-    allowed = [Path("/tmp").resolve(), Path("/var/lib/agentd/projects").resolve()]
+    allowed = [Path("/tmp").resolve(), Path("/var/lib/kriya/projects").resolve()]
     if not any(str(p).startswith(str(a)) for a in allowed):
         return {"error": f"Write not allowed to {p} – use /tmp or project dirs"}
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +177,7 @@ def skill_system_shell(params: dict, secrets: dict) -> dict:
 def skill_memory_remember(params: dict, secrets: dict) -> dict:
     """Store something in project long-term memory."""
     # Lazy import to avoid circular at module level
-    from agentd.ai.memory import get_long_term
+    from kriya.ai.memory import get_long_term
     project_id = params.get("project_id", "default")
     content    = params.get("content", "")
     importance = float(params.get("importance", 1.0))
@@ -190,7 +190,7 @@ def skill_memory_remember(params: dict, secrets: dict) -> dict:
 
 def skill_memory_recall(params: dict, secrets: dict) -> dict:
     """Recall relevant memories for a query."""
-    from agentd.ai.memory import get_long_term
+    from kriya.ai.memory import get_long_term
     project_id = params.get("project_id", "default")
     query      = params.get("query", "")
     top_k      = int(params.get("top_k", 5))
@@ -203,7 +203,7 @@ def skill_memory_recall(params: dict, secrets: dict) -> dict:
 # ── Registration ───────────────────────────────────────────────────────────
 
 def register_builtin_skills():
-    from agentd.core.agent import register_skill
+    from kriya.core.agent import register_skill
     register_skill("http.call",        skill_http_call)
     register_skill("web.scrape",       skill_web_scrape)
     register_skill("fs.write",         skill_fs_write)

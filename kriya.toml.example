@@ -1,5 +1,5 @@
-# AgentOS daemon configuration
-# Copy this to your AGENTD_BASE directory and edit as needed.
+# Kriya daemon configuration
+# Copy this to your KRIYA_BASE directory and edit as needed.
 # Environment variables always take precedence over values here.
 # Requires Python 3.11+ for TOML parsing (tomllib is stdlib from 3.11).
 
