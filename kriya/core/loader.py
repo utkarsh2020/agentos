@@ -1,5 +1,5 @@
 """
-AgentOS – TOML project loader
+Kriya – TOML project loader
 Parses project definition files and upserts into the DB.
 """
 import json
@@ -9,8 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from agentd.core import store
-from agentd.core.scheduler import next_run_time
+from kriya.core import store
+from kriya.core.scheduler import next_run_time
 
 
 def load_toml(path: str | Path) -> dict:

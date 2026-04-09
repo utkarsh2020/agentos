@@ -1,5 +1,5 @@
 """
-AgentOS – LLM abstraction layer
+Kriya – LLM abstraction layer
 Supports: Anthropic (Claude), OpenAI, Ollama
 Pure urllib.request – zero external deps.
 Pi Zero: keep max_tokens conservative to avoid OOM.
@@ -11,7 +11,7 @@ import urllib.error
 from dataclasses import dataclass
 from typing import Optional, Iterator
 
-from agentd.core.config import get_config, LLMProviderConfig
+from kriya.core.config import get_config, LLMProviderConfig
 
 
 @dataclass

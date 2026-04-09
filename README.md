@@ -1,4 +1,4 @@
-# AgentOS
+# Kriya
 
 > Agentic AI Operating System — lightweight, modular, Pi Zero native.
 
@@ -41,7 +41,7 @@ A self-hosted runtime for orchestrating AI agents, task pipelines, and multi-cha
 
 ## What it does
 
-AgentOS lets you define **projects** — collections of **tasks** arranged as a dependency graph (DAG). Each task is executed by one or more **agents** (LLM-powered workers). Agents can use **skills** (tools) to interact with the outside world: scrape the web, read/write files, call APIs.
+Kriya lets you define **projects** — collections of **tasks** arranged as a dependency graph (DAG). Each task is executed by one or more **agents** (LLM-powered workers). Agents can use **skills** (tools) to interact with the outside world: scrape the web, read/write files, call APIs.
 
 Everything runs in a single Python process. There is no Docker, no Node.js, no message broker to install.
 
@@ -116,14 +116,14 @@ Python 3.10 works if you do not use TOML project files (use the API/CLI to creat
 
 ```bash
 # Clone / extract
-git clone https://github.com/agentos/agentos   # or: tar xzf agentos-v0.2.0.tar.gz
-cd agentos
+git clone https://github.com/kriya/kriya   # or: tar xzf kriya-v0.2.0.tar.gz
+cd kriya
 
 # Set at least one LLM provider key
 export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY or OLLAMA_MODEL=llama3
 
 # Start the daemon (foreground)
-python3 agentd/daemon.py
+python3 kriya/daemon.py
 
 # In a second terminal — run a project
 python3 bin/agent run examples/newsletter.toml --follow
@@ -143,15 +143,15 @@ Default login: `admin` / `agentadmin` — **change this before exposing to a net
 No install step needed. Run directly from the source directory.
 
 ```bash
-tar xzf agentos-v0.2.0.tar.gz
-cd agentos
+tar xzf kriya-v0.2.0.tar.gz
+cd kriya
 
 # Optional: add the CLI to your PATH
 export PATH="$PATH:$(pwd)/bin"
 
 # Start
 export ANTHROPIC_API_KEY=sk-ant-...
-python3 agentd/daemon.py
+python3 kriya/daemon.py
 ```
 
 ### Raspberry Pi (production)
@@ -165,37 +165,37 @@ python3 agentd/daemon.py
 | Pi 3 | ARMv7/ARMv8 | Raspberry Pi OS Lite 32-bit or 64-bit |
 | Pi 4 / Pi 5 | ARM64 | Raspberry Pi OS Lite 64-bit (recommended) |
 
-> **Pi Zero W note:** the 64-bit OS image does **not** support ARMv6. You must use the 32-bit image. AgentOS itself is architecture-agnostic — the same code runs on all of the above.
+> **Pi Zero W note:** the 64-bit OS image does **not** support ARMv6. You must use the 32-bit image. Kriya itself is architecture-agnostic — the same code runs on all of the above.
 
 Python 3.11 is included in Raspberry Pi OS Lite Bookworm (32-bit and 64-bit).
 
 ```bash
 # Transfer the archive to the Pi
-scp agentos-v0.2.0.tar.gz pi@raspberrypi.local:~
+scp kriya-v0.2.0.tar.gz pi@raspberrypi.local:~
 ssh pi@raspberrypi.local
 
-tar xzf agentos-v0.2.0.tar.gz
-cd agentos
+tar xzf kriya-v0.2.0.tar.gz
+cd kriya
 
 # Run the installer — auto-detects architecture and sets memory limits
 sudo bash deploy/install.sh
 
 # Edit the environment file — add your API key(s)
-sudo nano /etc/agentd/agentd.env
+sudo nano /etc/kriya/kriya.env
 
 # Start
-sudo systemctl start agentd
-sudo systemctl status agentd
+sudo systemctl start kriya
+sudo systemctl status kriya
 ```
 
 The installer detects your architecture (`uname -m`) and automatically sets:
 - `MemoryMax` in the systemd unit (180 MB for ARMv6, 320 MB for ARMv7, 512 MB for ARM64/x86_64)
-- `AGENTD_MAX_AGENTS` default (1 for ARMv6, 2 for ARMv7, 4 for ARM64/x86_64)
+- `KRIYA_MAX_AGENTS` default (1 for ARMv6, 2 for ARMv7, 4 for ARM64/x86_64)
 - Ollama warning if ARMv6 is detected (Ollama does not support ARMv6)
 
 **Per-device tuning:**
 
-| Device | `AGENTD_MAX_AGENTS` | Recommended model | Ollama? |
+| Device | `KRIYA_MAX_AGENTS` | Recommended model | Ollama? |
 |---|---|---|---|
 | Pi Zero W (ARMv6) | 1 | `claude-3-5-haiku` or `gpt-4o-mini` | ✗ Not supported |
 | Pi Zero 2 W (ARMv7) | 1–2 | `claude-3-5-haiku` or `gpt-4o-mini` | ✓ q4 models only |
@@ -205,37 +205,37 @@ The installer detects your architecture (`uname -m`) and automatically sets:
 
 ### Systemd service
 
-The installer places a unit file at `/etc/systemd/system/agentd.service`.
+The installer places a unit file at `/etc/systemd/system/kriya.service`.
 
 ```bash
-sudo systemctl enable agentd    # start on boot
-sudo systemctl start  agentd
-sudo systemctl stop   agentd
-sudo systemctl restart agentd
+sudo systemctl enable kriya    # start on boot
+sudo systemctl start  kriya
+sudo systemctl stop   kriya
+sudo systemctl restart kriya
 
 # View live logs
-journalctl -u agentd -f
+journalctl -u kriya -f
 ```
 
-The service runs as the `agentd` system user (no root). Data lives at `/var/lib/agentd/`.
+The service runs as the `kriya` system user (no root). Data lives at `/var/lib/kriya/`.
 
 ---
 
 ## Configuration
 
-Configuration is read from **environment variables** (highest priority) or `agentd.toml` in the base directory.
+Configuration is read from **environment variables** (highest priority) or `kriya.toml` in the base directory.
 
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTD_BASE` | source directory | Base path for DB, vault, logs, projects |
-| `AGENTD_HOST` | `0.0.0.0` | API server bind address |
-| `AGENTD_PORT` | `7777` | API server port |
-| `AGENTD_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
-| `AGENTD_JWT_SECRET` | auto-generated | HS256 signing key — set explicitly for multi-restart consistency |
-| `AGENTD_VAULT_PASS` | `agentd-default-change-me` | Master key for secrets vault — **always change this** |
-| `AGENTD_MAX_AGENTS` | `3` | Maximum concurrent agents |
+| `KRIYA_BASE` | source directory | Base path for DB, vault, logs, projects |
+| `KRIYA_HOST` | `0.0.0.0` | API server bind address |
+| `KRIYA_PORT` | `7777` | API server port |
+| `KRIYA_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
+| `KRIYA_JWT_SECRET` | auto-generated | HS256 signing key — set explicitly for multi-restart consistency |
+| `KRIYA_VAULT_PASS` | `kriya-default-change-me` | Master key for secrets vault — **always change this** |
+| `KRIYA_MAX_AGENTS` | `3` | Maximum concurrent agents |
 | `ANTHROPIC_API_KEY` | — | Enables Anthropic Claude provider |
 | `ANTHROPIC_MODEL` | `claude-3-5-haiku-20241022` | Default Claude model |
 | `OPENAI_API_KEY` | — | Enables OpenAI provider |
@@ -244,7 +244,7 @@ Configuration is read from **environment variables** (highest priority) or `agen
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | — | Set to enable Ollama (e.g. `llama3`, `mistral`). **Not supported on ARMv6.** |
 
-### agentd.toml (optional)
+### kriya.toml (optional)
 
 ```toml
 [daemon]
@@ -342,7 +342,7 @@ Send messages via Telegram Bot API, poll for incoming messages, or set webhooks.
 ```python
 # Send a message
 {"action": "skill_call", "skill": "telegram.send", "params": {
-  "text": "Hello from AgentOS!",
+  "text": "Hello from Kriya!",
   "parse_mode": "Markdown"
 }}
 
@@ -364,7 +364,7 @@ Send messages via WhatsApp Business Cloud API (Meta).
 # Send a text message
 {"action": "skill_call", "skill": "whatsapp.send", "params": {
   "to": "+1234567890",
-  "text": "Hello from AgentOS!"
+  "text": "Hello from Kriya!"
 }}
 
 # Send media (image, document, video)
@@ -402,7 +402,7 @@ Send messages via Slack API or incoming webhooks.
 # Send a message
 {"action": "skill_call", "skill": "slack.send", "params": {
   "channel": "#general",
-  "text": "Hello from AgentOS!"
+  "text": "Hello from Kriya!"
 }}
 
 # Send with Slack Block Kit
@@ -435,7 +435,7 @@ Send and read emails via Gmail API. Requires OAuth2 setup (see below).
 {"action": "skill_call", "skill": "gmail.send", "params": {
   "mode": "send",
   "to": "user@example.com",
-  "subject": "Hello from AgentOS",
+  "subject": "Hello from Kriya",
   "body": "Email body text"
 }}
 
@@ -474,7 +474,7 @@ Send and read emails via Gmail API. Requires OAuth2 setup (see below).
 **Gmail OAuth2 Setup (Pi Zero compatible):**
 1. Create OAuth2 credentials in Google Cloud Console
 2. On a desktop machine, obtain a refresh_token via OAuth2 flow
-3. Store the refresh_token in AgentOS vault
+3. Store the refresh_token in Kriya vault
 4. Skill will automatically exchange for access_token on each call
 ```
 ```
@@ -633,7 +633,7 @@ Returns: `{"url": "...", "text": "...", "chars": 4821}`
 
 ### `fs.write`
 
-Write content to a file. Restricted to `/tmp/` and `/var/lib/agentd/projects/`.
+Write content to a file. Restricted to `/tmp/` and `/var/lib/kriya/projects/`.
 
 ```json
 {
@@ -777,20 +777,20 @@ def handle(params: dict, secrets: dict) -> dict:
 - The file must define `SKILL_ID = "..."` and `def handle(params, secrets) -> dict`.
 - Secrets are injected from the project vault at call time — never hard-code keys.
 - Return a `dict`. On error, include `{"error": "..."}`.
-- The function can be `async def handle(...)` — AgentOS will await it.
+- The function can be `async def handle(...)` — Kriya will await it.
 - Restart the daemon after adding a new skill (or send `SIGHUP`).
 
 ---
 
 ## Memory system
 
-AgentOS implements a two-tier memory system for agents.
+Kriya implements a two-tier memory system for agents.
 
 ### Short-term memory
 
 A bounded FIFO message buffer per agent. Holds the last N messages (default: 50) in the current conversation. System messages are always preserved. Persisted to SQLite so agents can resume across restarts.
 
-**Configuration:** `AGENTD_SHORT_TERM_CAPACITY` (or `short_term_capacity` in `agentd.toml`)
+**Configuration:** `KRIYA_SHORT_TERM_CAPACITY` (or `short_term_capacity` in `kriya.toml`)
 
 ### Long-term memory
 
@@ -798,7 +798,7 @@ A per-project vector store backed by SQLite. Uses 64-dimensional n-gram embeddin
 
 Agents automatically save important output to long-term memory at the end of each run. Agents can also explicitly call `memory.remember` and `memory.recall` skills.
 
-**Upgrade path:** When running with Ollama, you can replace `_embed()` in `agentd/ai/memory.py` with calls to `ollama.embeddings` for true semantic search.
+**Upgrade path:** When running with Ollama, you can replace `_embed()` in `kriya/ai/memory.py` with calls to `ollama.embeddings` for true semantic search.
 
 ---
 
@@ -808,18 +808,18 @@ Agents automatically save important output to long-term memory at the end of eac
 
 - Stored at `vault/<project-id>/<KEY>.enc`
 - Encrypted with AES-256-GCM (if `cryptography` library present) or HMAC-XOR (stdlib fallback)
-- Master key derived with PBKDF2 (100,000 iterations) from `AGENTD_VAULT_PASS`
+- Master key derived with PBKDF2 (100,000 iterations) from `KRIYA_VAULT_PASS`
 - Secrets injected as environment variables at runtime — never written to logs
 
 ```bash
 # Always set this before first run
-export AGENTD_VAULT_PASS="my-long-random-passphrase"
+export KRIYA_VAULT_PASS="my-long-random-passphrase"
 ```
 
 ### Authentication
 
 - JWT HS256, 1-hour TTL
-- Tokens saved to `~/.agentd_token` by the CLI
+- Tokens saved to `~/.kriya_token` by the CLI
 - All API endpoints require `Authorization: Bearer <token>` except `/api/health`
 
 ### RBAC
@@ -981,8 +981,8 @@ Required capability: `project:write`
 ## Project structure
 
 ```
-agentos/
-├── agentd/
+kriya/
+├── kriya/
 │   ├── ai/
 │   │   ├── llm.py           # LLM abstraction — Anthropic, OpenAI, Ollama
 │   │   └── memory.py        # Short-term + long-term memory
@@ -1014,7 +1014,7 @@ agentos/
 ├── tests/
 │   └── test_suite.py        # 40 unit + integration tests
 ├── deploy/
-│   ├── agentd.service       # systemd unit file
+│   ├── kriya.service       # systemd unit file
 │   └── install.sh           # Pi Zero / Debian installer
 └── README.md
 ```
@@ -1038,7 +1038,7 @@ agentos/
   - Daemon banner shows detected architecture and Python version at startup
   - Web dashboard sidebar shows live architecture from `/api/status`
   - README OS image selection table for all Pi boards
-- **Web dashboard** — single-file `static/dashboard.html` served at `/` by `agentd`
+- **Web dashboard** — single-file `static/dashboard.html` served at `/` by `kriya`
   - Five screens: Overview, Projects, Agents, Event log, Skills
   - Live stats and auto-refresh every 4 seconds
   - Task DAG visualiser with topological layer layout
@@ -1049,7 +1049,7 @@ agentos/
 
 ### v0.1.0
 - Initial release
-- Core daemon (`agentd`) — asyncio, single process, Pi Zero optimised
+- Core daemon (`kriya`) — asyncio, single process, Pi Zero optimised
 - SQLite state store with WAL mode
 - Task DAG scheduler with `@every`, `@daily`, `@hourly`, `@weekly`, `@once` syntax
 - Async event bus (pub/sub + request/reply)

@@ -1,5 +1,5 @@
 """
-AgentOS – REST API server
+Kriya – REST API server
 Pure stdlib http.server + json. No Flask/FastAPI deps.
 Async-compatible via thread bridge.
 Endpoints cover: projects, tasks, agents, skills, secrets, events, auth.
@@ -15,10 +15,10 @@ from threading import Thread
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
-from agentd.core import store
-from agentd.core.config import get_config
-from agentd.core.scheduler import run_project, next_run_time, CronScheduler
-from agentd.security.vault import (
+from kriya.core import store
+from kriya.core.config import get_config
+from kriya.core.scheduler import run_project, next_run_time, CronScheduler
+from kriya.security.vault import (
     authenticate, verify_token, has_capability,
     set_secret, get_secret, list_secrets, delete_secret,
     hash_password, ROLES,
@@ -33,7 +33,7 @@ def _get_arch() -> str:
             "aarch64":"ARM64 64-bit","x86_64":"x86_64 64-bit",
             "AMD64":"x86_64 64-bit"}.get(m, f"{m} {b}-bit")
 
-log = logging.getLogger("agentd.api")
+log = logging.getLogger("kriya.api")
 
 
 # ── Route registry ─────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ def route(method: str, path: str):
 
 # ── Base handler ───────────────────────────────────────────────────────────
 
-class AgentOSHandler(BaseHTTPRequestHandler):
+class KriyaHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, format, *args):
@@ -144,7 +144,7 @@ class AgentOSHandler(BaseHTTPRequestHandler):
         """Serve files from static/. Checks BASE_DIR/static first, then source-tree static/."""
         import mimetypes
         from pathlib import Path
-        from agentd.core.config import BASE_DIR
+        from kriya.core.config import BASE_DIR
 
         if path in ("/", ""):
             path = "/dashboard.html"
@@ -186,7 +186,7 @@ class AgentOSHandler(BaseHTTPRequestHandler):
 # ── Auth ───────────────────────────────────────────────────────────────────
 
 @route("POST", "/api/auth/login")
-def login(h: AgentOSHandler, *_):
+def login(h: KriyaHandler, *_):
     body = h._body()
     token = authenticate(body.get("username", ""), body.get("password", ""))
     if not token:
@@ -195,7 +195,7 @@ def login(h: AgentOSHandler, *_):
 
 
 @route("GET", "/api/auth/me")
-def me(h: AgentOSHandler, *_):
+def me(h: KriyaHandler, *_):
     claims = h._require("project:read")
     if claims:
         h._send({"user": claims})
@@ -204,10 +204,10 @@ def me(h: AgentOSHandler, *_):
 # ── System ─────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/status")
-def status(h: AgentOSHandler, *_):
+def status(h: KriyaHandler, *_):
     h._send({
         "status": "running",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "arch": _get_arch(),
         "providers": [p.name for p in get_config().providers if p.enabled],
         "uptime_s": int(time.time() - _start_time),
@@ -215,21 +215,21 @@ def status(h: AgentOSHandler, *_):
     })
 
 @route("GET", "/api/health")
-def health(h: AgentOSHandler, *_):
+def health(h: KriyaHandler, *_):
     h._send({"ok": True})
 
 
 # ── Projects ───────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects")
-def list_projects(h: AgentOSHandler, *_):
+def list_projects(h: KriyaHandler, *_):
     if not h._require("project:read"):
         return
     h._send(store.fetch_all("projects"))
 
 
 @route("POST", "/api/projects")
-def create_project(h: AgentOSHandler, *_):
+def create_project(h: KriyaHandler, *_):
     if not h._require("project:write"):
         return
     body = h._body()
@@ -257,7 +257,7 @@ def create_project(h: AgentOSHandler, *_):
 
 
 @route("GET", "/api/projects/<id>")
-def get_project(h: AgentOSHandler, *_, **params):
+def get_project(h: KriyaHandler, *_, **params):
     if not h._require("project:read"):
         return
     p = store.fetch_one("projects", params["id"])
@@ -268,7 +268,7 @@ def get_project(h: AgentOSHandler, *_, **params):
 
 
 @route("POST", "/api/projects/<id>/run")
-def run_project_endpoint(h: AgentOSHandler, *_, **params):
+def run_project_endpoint(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     pid = params["id"]
@@ -281,7 +281,7 @@ def run_project_endpoint(h: AgentOSHandler, *_, **params):
 
 
 @route("DELETE", "/api/projects/<id>")
-def delete_project(h: AgentOSHandler, *_, **params):
+def delete_project(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     store.delete("projects", params["id"])
@@ -289,7 +289,7 @@ def delete_project(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/projects/<id>/schedule")
-def update_project_schedule(h: AgentOSHandler, *_, **params):
+def update_project_schedule(h: KriyaHandler, *_, **params):
     claims = h._require("project:write")
     if not claims:
         return
@@ -320,7 +320,7 @@ def update_project_schedule(h: AgentOSHandler, *_, **params):
 # ── Memory ────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects/<project_id>/memory")
-def list_project_memory(h: AgentOSHandler, path, qs, **params):
+def list_project_memory(h: KriyaHandler, path, qs, **params):
     if not h._require("project:read"):
         return
     limit = int(qs.get("limit", [50])[0])
@@ -333,7 +333,7 @@ def list_project_memory(h: AgentOSHandler, path, qs, **params):
 
 
 @route("DELETE", "/api/projects/<project_id>/memory/<id>")
-def delete_memory(h: AgentOSHandler, *_, **params):
+def delete_memory(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     rows = store.raw_query(
@@ -349,14 +349,14 @@ def delete_memory(h: AgentOSHandler, *_, **params):
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects/<project_id>/tasks")
-def list_tasks(h: AgentOSHandler, *_, **params):
+def list_tasks(h: KriyaHandler, *_, **params):
     if not h._require("task:read"):
         return
     h._send(store.fetch_where("tasks", project_id=params["project_id"]))
 
 
 @route("POST", "/api/projects/<project_id>/tasks")
-def create_task(h: AgentOSHandler, *_, **params):
+def create_task(h: KriyaHandler, *_, **params):
     if not h._require("task:write"):
         return
     body = h._body()
@@ -372,7 +372,7 @@ def create_task(h: AgentOSHandler, *_, **params):
 
 
 @route("DELETE", "/api/projects/<project_id>/tasks/<id>")
-def delete_task(h: AgentOSHandler, *_, **params):
+def delete_task(h: KriyaHandler, *_, **params):
     if not h._require("task:write"):
         return
     t = store.fetch_one("tasks", params["id"])
@@ -383,7 +383,7 @@ def delete_task(h: AgentOSHandler, *_, **params):
 
 
 @route("GET", "/api/tasks/<id>")
-def get_task(h: AgentOSHandler, *_, **params):
+def get_task(h: KriyaHandler, *_, **params):
     if not h._require("task:read"):
         return
     t = store.fetch_one("tasks", params["id"])
@@ -396,7 +396,7 @@ def get_task(h: AgentOSHandler, *_, **params):
 # ── Agents ────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/agents")
-def list_agents(h: AgentOSHandler, path, qs):
+def list_agents(h: KriyaHandler, path, qs):
     if not h._require("agent:read"):
         return
     project_id = qs.get("project_id", [None])[0]
@@ -407,7 +407,7 @@ def list_agents(h: AgentOSHandler, path, qs):
 
 
 @route("GET", "/api/agents/<id>")
-def get_agent(h: AgentOSHandler, *_, **params):
+def get_agent(h: KriyaHandler, *_, **params):
     if not h._require("agent:read"):
         return
     a = store.fetch_one("agents", params["id"])
@@ -420,14 +420,14 @@ def get_agent(h: AgentOSHandler, *_, **params):
 # ── Secrets ────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects/<project_id>/secrets")
-def list_proj_secrets(h: AgentOSHandler, *_, **params):
+def list_proj_secrets(h: KriyaHandler, *_, **params):
     if not h._require("project:read"):
         return
     h._send({"keys": list_secrets(params["project_id"])})
 
 
 @route("POST", "/api/projects/<project_id>/secrets")
-def set_proj_secret(h: AgentOSHandler, *_, **params):
+def set_proj_secret(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     body = h._body()
@@ -440,7 +440,7 @@ def set_proj_secret(h: AgentOSHandler, *_, **params):
 
 
 @route("DELETE", "/api/projects/<project_id>/secrets/<key>")
-def del_proj_secret(h: AgentOSHandler, *_, **params):
+def del_proj_secret(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     delete_secret(params["project_id"], params["key"])
@@ -450,7 +450,7 @@ def del_proj_secret(h: AgentOSHandler, *_, **params):
 # ── Task extras ───────────────────────────────────────────────────────────
 
 @route("DELETE", "/api/projects/<project_id>/tasks/<id>")
-def delete_task(h: AgentOSHandler, *_, **params):
+def delete_task(h: KriyaHandler, *_, **params):
     if not h._require("task:write"):
         return
     t = store.fetch_one("tasks", params["id"])
@@ -461,7 +461,7 @@ def delete_task(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/projects/<id>/schedule")
-def update_schedule(h: AgentOSHandler, *_, **params):
+def update_schedule(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     body = h._body()
@@ -488,7 +488,7 @@ def update_schedule(h: AgentOSHandler, *_, **params):
 # ── Memory ─────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/projects/<project_id>/memory")
-def list_project_memory(h: AgentOSHandler, path, qs, **params):
+def list_project_memory(h: KriyaHandler, path, qs, **params):
     if not h._require("project:read"):
         return
     limit = int(qs.get("limit", [50])[0])
@@ -501,7 +501,7 @@ def list_project_memory(h: AgentOSHandler, path, qs, **params):
 
 
 @route("DELETE", "/api/projects/<project_id>/memory/<id>")
-def delete_memory(h: AgentOSHandler, *_, **params):
+def delete_memory(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     rows = store.raw_query(
@@ -517,7 +517,7 @@ def delete_memory(h: AgentOSHandler, *_, **params):
 # ── Events (audit log) ────────────────────────────────────────────────────
 
 @route("GET", "/api/events")
-def list_events(h: AgentOSHandler, path, qs):
+def list_events(h: KriyaHandler, path, qs):
     if not h._require("project:read"):
         return
     topic = qs.get("topic", [None])[0]
@@ -537,7 +537,7 @@ def list_events(h: AgentOSHandler, path, qs):
 # ── Users ─────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/users")
-def list_users(h: AgentOSHandler, *_):
+def list_users(h: KriyaHandler, *_):
     if not h._require("admin:read"):
         return
     rows = store.fetch_all("users")
@@ -548,7 +548,7 @@ def list_users(h: AgentOSHandler, *_):
 
 
 @route("POST", "/api/users")
-def create_user(h: AgentOSHandler, *_):
+def create_user(h: KriyaHandler, *_):
     if not h._require("admin:write"):
         return
     body = h._body()
@@ -574,7 +574,7 @@ def create_user(h: AgentOSHandler, *_):
 
 
 @route("DELETE", "/api/users/<id>")
-def delete_user(h: AgentOSHandler, *_, **params):
+def delete_user(h: KriyaHandler, *_, **params):
     claims = h._require("admin:write")
     if not claims:
         return
@@ -585,7 +585,7 @@ def delete_user(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/users/<id>/role")
-def change_user_role(h: AgentOSHandler, *_, **params):
+def change_user_role(h: KriyaHandler, *_, **params):
     if not h._require("admin:write"):
         return
     body = h._body()
@@ -601,7 +601,7 @@ def change_user_role(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/users/<id>/password")
-def change_user_password(h: AgentOSHandler, *_, **params):
+def change_user_password(h: KriyaHandler, *_, **params):
     claims = h._require("project:read")   # any authenticated user
     if not claims:
         return
@@ -619,17 +619,17 @@ def change_user_password(h: AgentOSHandler, *_, **params):
 # ── Skills ────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/skills")
-def list_skills_endpoint(h: AgentOSHandler, *_):
+def list_skills_endpoint(h: KriyaHandler, *_):
     if not h._require("project:read"):
         return
-    from agentd.core.agent import _skill_handlers
+    from kriya.core.agent import _skill_handlers
     h._send([{"id": sid, "loaded": True} for sid in _skill_handlers])
 
 
 # ── Users ────────────────────────────────────────────────────────────────
 
 @route("GET", "/api/users")
-def list_users(h: AgentOSHandler, *_):
+def list_users(h: KriyaHandler, *_):
     if not h._require("project:read"):
         return
     users = store.fetch_all("users")
@@ -639,7 +639,7 @@ def list_users(h: AgentOSHandler, *_):
 
 
 @route("POST", "/api/users")
-def create_user(h: AgentOSHandler, *_):
+def create_user(h: KriyaHandler, *_):
     if not h._require("admin"):
         return
     body = h._body()
@@ -650,10 +650,10 @@ def create_user(h: AgentOSHandler, *_):
         return h._err("username required")
     if not password:
         return h._err("password required")
-    from agentd.security.vault import ROLES
+    from kriya.security.vault import ROLES
     if role not in ROLES:
         return h._err(f"invalid role, must be one of: {', '.join(ROLES)}")
-    from agentd.security.vault import hash_password
+    from kriya.security.vault import hash_password
     hashed = hash_password(password)
     uid = store.insert("users",
         username=username,
@@ -666,7 +666,7 @@ def create_user(h: AgentOSHandler, *_):
 
 
 @route("DELETE", "/api/users/<id>")
-def delete_user(h: AgentOSHandler, *_, **params):
+def delete_user(h: KriyaHandler, *_, **params):
     if not h._require("admin"):
         return
     user = store.fetch_one("users", params["id"])
@@ -677,7 +677,7 @@ def delete_user(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/users/<id>/role")
-def change_user_role(h: AgentOSHandler, *_, **params):
+def change_user_role(h: KriyaHandler, *_, **params):
     if not h._require("admin"):
         return
     user = store.fetch_one("users", params["id"])
@@ -685,7 +685,7 @@ def change_user_role(h: AgentOSHandler, *_, **params):
         return h._err("User not found", 404)
     body = h._body()
     new_role = body.get("role", "")
-    from agentd.security.vault import ROLES
+    from kriya.security.vault import ROLES
     if new_role not in ROLES:
         return h._err(f"invalid role, must be one of: {', '.join(ROLES)}")
     store.update("users", params["id"], role=new_role)
@@ -695,7 +695,7 @@ def change_user_role(h: AgentOSHandler, *_, **params):
 
 
 @route("PUT", "/api/users/<id>/password")
-def change_user_password(h: AgentOSHandler, *_, **params):
+def change_user_password(h: KriyaHandler, *_, **params):
     claims = h._claims()
     if not claims:
         return h._err("Unauthorized", 401)
@@ -734,7 +734,7 @@ def _run_async(coro):
 def start_api_server(host: str, port: int, loop: asyncio.AbstractEventLoop):
     global _loop
     _loop = loop
-    server = HTTPServer((host, port), AgentOSHandler)
+    server = HTTPServer((host, port), KriyaHandler)
     log.info(f"[api] listening on http://{host}:{port}")
     t = Thread(target=server.serve_forever, daemon=True)
     t.start()

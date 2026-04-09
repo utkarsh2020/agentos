@@ -1,5 +1,5 @@
 """
-AgentOS – Memory system
+Kriya – Memory system
 Short-term: bounded LRU message buffer per agent (in-process)
 Long-term:  cosine similarity search over SQLite JSON embeddings
             Uses tiny hash-based embeddings (no ML deps) - Pi Zero safe.
@@ -13,8 +13,8 @@ import uuid
 from collections import OrderedDict
 from typing import Optional
 
-from agentd.core import store
-from agentd.core.config import get_config
+from kriya.core import store
+from kriya.core.config import get_config
 
 
 # ── Tiny embeddings ────────────────────────────────────────────────────────

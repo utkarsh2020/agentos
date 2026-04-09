@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AgentOS test suite – runs without a daemon, in-process.
+Kriya test suite – runs without a daemon, in-process.
 Tests: config, store, security, memory, LLM layer, scheduler, API, skills.
 """
 import asyncio
@@ -18,18 +18,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Use a temp DB for all tests
 _TMP = tempfile.mkdtemp()
-os.environ["AGENTD_BASE"] = _TMP
-os.environ["AGENTD_JWT_SECRET"] = "test-secret-key-for-testing-only"
-os.environ["AGENTD_VAULT_PASS"] = "test-vault-passphrase"
+os.environ["KRIYA_BASE"] = _TMP
+os.environ["KRIYA_JWT_SECRET"] = "test-secret-key-for-testing-only"
+os.environ["KRIYA_VAULT_PASS"] = "test-vault-passphrase"
 
-from agentd.core.config import get_config, BASE_DIR
-from agentd.core import store
-from agentd.security.vault import (
+from kriya.core.config import get_config, BASE_DIR
+from kriya.core import store
+from kriya.security.vault import (
     hash_password, verify_password, issue_token, verify_token,
     set_secret, get_secret, list_secrets, delete_secret, has_capability,
 )
-from agentd.ai.memory import ShortTermMemory, LongTermMemory, _embed, _cosine
-from agentd.core.bus import EventBus, Message, Topics
+from kriya.ai.memory import ShortTermMemory, LongTermMemory, _embed, _cosine
+from kriya.core.bus import EventBus, Message, Topics
 
 
 # ── Colours ───────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ G = "\033[32m"; R = "\033[31m"; Y = "\033[33m"; D = "\033[2m"; X = "\033[0m"
 PASS = f"{G}PASS{X}"; FAIL = f"{R}FAIL{X}"
 
 
-class AgentOSTestCase(unittest.TestCase):
+class KriyaTestCase(unittest.TestCase):
 
     def setUp(self):
         store.init_db()
@@ -278,32 +278,32 @@ class AgentOSTestCase(unittest.TestCase):
     # ── Skills – builtin ─────────────────────────────────────────────────
 
     def test_skill_fs_write_read(self):
-        from agentd.integrations.builtin_skills import skill_fs_write, skill_fs_read
-        result = skill_fs_write({"path": "/tmp/agentd_test.txt", "content": "hello AgentOS"}, {})
+        from kriya.integrations.builtin_skills import skill_fs_write, skill_fs_read
+        result = skill_fs_write({"path": "/tmp/kriya_test.txt", "content": "hello Kriya"}, {})
         self.assertTrue(result.get("written"))
 
-        result2 = skill_fs_read({"path": "/tmp/agentd_test.txt"}, {})
-        self.assertEqual(result2.get("content"), "hello AgentOS")
+        result2 = skill_fs_read({"path": "/tmp/kriya_test.txt"}, {})
+        self.assertEqual(result2.get("content"), "hello Kriya")
 
     def test_skill_fs_write_blocked_path(self):
-        from agentd.integrations.builtin_skills import skill_fs_write
+        from kriya.integrations.builtin_skills import skill_fs_write
         result = skill_fs_write({"path": "/etc/passwd", "content": "bad"}, {})
         self.assertIn("error", result)
         self.assertIn("not allowed", result["error"])
 
     def test_skill_system_shell_allowed(self):
-        from agentd.integrations.builtin_skills import skill_system_shell
+        from kriya.integrations.builtin_skills import skill_system_shell
         result = skill_system_shell({"command": "echo hello"}, {})
         self.assertIn("hello", result.get("stdout", ""))
 
     def test_skill_system_shell_blocked(self):
-        from agentd.integrations.builtin_skills import skill_system_shell
+        from kriya.integrations.builtin_skills import skill_system_shell
         result = skill_system_shell({"command": "rm -rf /"}, {})
         self.assertIn("error", result)
         self.assertIn("allowlist", result["error"])
 
     def test_skill_html_to_text(self):
-        from agentd.integrations.builtin_skills import _html_to_text
+        from kriya.integrations.builtin_skills import _html_to_text
         html = "<html><head><title>Test</title><script>alert(1)</script></head><body><h1>Hello</h1><p>World</p></body></html>"
         text = _html_to_text(html)
         self.assertIn("Hello", text)
@@ -325,25 +325,25 @@ class AgentOSTestCase(unittest.TestCase):
     # ── Scheduler – schedule parsing ──────────────────────────────────────
 
     def test_schedule_every_seconds(self):
-        from agentd.core.scheduler import next_run_time
+        from kriya.core.scheduler import next_run_time
         now = time.time()
         nxt = next_run_time("@every 30s", last_run=now)
         self.assertAlmostEqual(nxt - now, 30, delta=1)
 
     def test_schedule_every_minutes(self):
-        from agentd.core.scheduler import next_run_time
+        from kriya.core.scheduler import next_run_time
         now = time.time()
         nxt = next_run_time("@every 5m", last_run=now)
         self.assertAlmostEqual(nxt - now, 300, delta=1)
 
     def test_schedule_daily(self):
-        from agentd.core.scheduler import next_run_time
+        from kriya.core.scheduler import next_run_time
         now = time.time()
         nxt = next_run_time("@daily")
         self.assertAlmostEqual(nxt - now, 86400, delta=2)
 
     def test_schedule_once(self):
-        from agentd.core.scheduler import next_run_time
+        from kriya.core.scheduler import next_run_time
         now = time.time()
         nxt = next_run_time("@once", last_run=None)
         self.assertAlmostEqual(nxt, now, delta=2)
@@ -354,7 +354,7 @@ class AgentOSTestCase(unittest.TestCase):
     # ── DAG resolution ────────────────────────────────────────────────────
 
     def test_dag_get_ready_tasks(self):
-        from agentd.core.scheduler import get_ready_tasks
+        from kriya.core.scheduler import get_ready_tasks
         pid = store.insert("projects", name="test-dag-proj",
                            status="idle", created_at=time.time(), updated_at=time.time())
         t1 = store.insert("tasks", project_id=pid, name="fetch",
@@ -376,15 +376,15 @@ class AgentOSTestCase(unittest.TestCase):
     # ── LLM layer – mocked ────────────────────────────────────────────────
 
     def test_llm_no_providers(self):
-        from agentd.ai.llm import call_llm, LLMMessage, LLMError
+        from kriya.ai.llm import call_llm, LLMMessage, LLMError
         # Override config to have no providers
-        with patch("agentd.ai.llm.get_config") as mock_cfg:
+        with patch("kriya.ai.llm.get_config") as mock_cfg:
             mock_cfg.return_value.providers = []
             with self.assertRaises(LLMError):
                 call_llm([LLMMessage("user", "hello")], fallback=False)
 
     def test_llm_action_extraction(self):
-        from agentd.core.agent import _extract_action
+        from kriya.core.agent import _extract_action
         text = 'I will search for that.\n{"action": "skill_call", "skill": "web.scrape", "params": {"url": "https://example.com"}}\n'
         action = _extract_action(text)
         self.assertIsNotNone(action)
@@ -392,7 +392,7 @@ class AgentOSTestCase(unittest.TestCase):
         self.assertEqual(action["params"]["url"], "https://example.com")
 
     def test_llm_no_action(self):
-        from agentd.core.agent import _extract_action
+        from kriya.core.agent import _extract_action
         text = "Here is my response without any tool calls."
         self.assertIsNone(_extract_action(text))
 
@@ -430,7 +430,7 @@ prompt = "Do the work."
             f.write(toml_content)
             fpath = f.name
 
-        from agentd.core.loader import import_project
+        from kriya.core.loader import import_project
         pid = import_project(fpath)
         p = store.fetch_one("projects", pid)
         self.assertEqual(p["name"], "test-toml-project")
@@ -448,7 +448,7 @@ prompt = "Do the work."
         """Start API server, login, hit /api/status."""
         import threading, socket, time
         from http.server import HTTPServer
-        from agentd.api.server import AgentOSHandler, _start_time
+        from kriya.api.server import KriyaHandler, _start_time
 
         # Find a free port
         with socket.socket() as s:
@@ -456,9 +456,9 @@ prompt = "Do the work."
             port = s.getsockname()[1]
 
         loop = asyncio.new_event_loop()
-        server = HTTPServer(("127.0.0.1", port), AgentOSHandler)
+        server = HTTPServer(("127.0.0.1", port), KriyaHandler)
 
-        import agentd.api.server as api_mod
+        import kriya.api.server as api_mod
         api_mod._loop = loop
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
@@ -498,7 +498,7 @@ prompt = "Do the work."
 
     def test_e2e_project_run_mocked(self):
         """Run a full project with a mocked LLM call."""
-        from agentd.core.scheduler import run_project
+        from kriya.core.scheduler import run_project
 
         # Create project
         pid = store.insert("projects", name="e2e-test",
@@ -524,7 +524,7 @@ prompt = "Do the work."
         )
 
         # Mock LLM call
-        from agentd.ai import llm as llm_mod
+        from kriya.ai import llm as llm_mod
         mock_resp = llm_mod.LLMResponse(
             content="The Pi Zero is a compact, low-cost single-board computer.",
             model="mock-model",
@@ -534,7 +534,7 @@ prompt = "Do the work."
             latency_ms=100,
         )
         # Patch where agent.py imports call_llm from
-        with patch("agentd.core.agent.call_llm", return_value=mock_resp):
+        with patch("kriya.core.agent.call_llm", return_value=mock_resp):
             asyncio.run(run_project(pid))
 
         # Check results
@@ -552,10 +552,10 @@ prompt = "Do the work."
 
 def run_tests():
     loader = unittest.TestLoader()
-    suite  = loader.loadTestsFromTestCase(AgentOSTestCase)
+    suite  = loader.loadTestsFromTestCase(KriyaTestCase)
     total  = suite.countTestCases()
 
-    print(f"\n  {D}AgentOS Test Suite{X}  ({total} tests)\n")
+    print(f"\n  {D}Kriya Test Suite{X}  ({total} tests)\n")
     print("  " + "─" * 60)
 
     runner = unittest.TextTestRunner(

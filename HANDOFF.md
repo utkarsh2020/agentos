@@ -1,4 +1,4 @@
-# AgentOS — Project Handoff & Continuity Document
+# Kriya — Project Handoff & Continuity Document
 
 **For:** AI-assisted development continuation (Kilo Code / Claude)  
 **Version at handoff:** v0.3.0  
@@ -7,9 +7,9 @@
 
 ---
 
-## 1. What AgentOS Is
+## 1. What Kriya Is
 
-AgentOS is an **Agentic AI Operating System** — a lightweight, self-hosted runtime that orchestrates LLM-powered agents to execute tasks automatically. It is designed to run on a **Raspberry Pi Zero W** (ARMv6, 512 MB RAM) as a primary constraint, which means:
+Kriya is an **Agentic AI Operating System** — a lightweight, self-hosted runtime that orchestrates LLM-powered agents to execute tasks automatically. It is designed to run on a **Raspberry Pi Zero W** (ARMv6, 512 MB RAM) as a primary constraint, which means:
 
 - **Zero external Python dependencies** — pure `stdlib` only (`sqlite3`, `asyncio`, `http.server`, `urllib.request`, `hmac`, `hashlib`, `json`, `pathlib`, etc.)
 - **Single asyncio process** — no Docker, no message brokers, no npm
@@ -29,32 +29,32 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  INTERFACE LAYER                                                 │
-│  bin/agent (CLI)  ·  agentd/api/server.py (REST :7777)          │
+│  bin/agent (CLI)  ·  kriya/api/server.py (REST :7777)          │
 │  static/dashboard.html (served at /)                             │
 ├─────────────────────────────────────────────────────────────────┤
 │  AI LAYER                                                        │
-│  agentd/ai/llm.py          — Anthropic, OpenAI, Ollama via      │
+│  kriya/ai/llm.py          — Anthropic, OpenAI, Ollama via      │
 │                               urllib.request (no httpx/requests) │
-│  agentd/ai/memory.py       — ShortTermMemory (LRU FIFO) +       │
+│  kriya/ai/memory.py       — ShortTermMemory (LRU FIFO) +       │
 │                               LongTermMemory (64-dim cosine/SQLite)│
 ├─────────────────────────────────────────────────────────────────┤
 │  ORCHESTRATION LAYER                                             │
-│  agentd/core/agent.py      — AgentRunner: the agent executor    │
-│  agentd/core/scheduler.py  — DAG resolver + CronScheduler       │
-│  agentd/core/bus.py        — EventBus: asyncio pub/sub          │
-│  agentd/core/loader.py     — TOML project file → DB import      │
+│  kriya/core/agent.py      — AgentRunner: the agent executor    │
+│  kriya/core/scheduler.py  — DAG resolver + CronScheduler       │
+│  kriya/core/bus.py        — EventBus: asyncio pub/sub          │
+│  kriya/core/loader.py     — TOML project file → DB import      │
 ├─────────────────────────────────────────────────────────────────┤
 │  INTEGRATION LAYER                                               │
-│  agentd/integrations/builtin_skills.py  — 7 built-in skills     │
+│  kriya/integrations/builtin_skills.py  — 7 built-in skills     │
 │  skills/*/handler.py                    — custom plugin skills   │
 ├─────────────────────────────────────────────────────────────────┤
 │  CORE RUNTIME                                                    │
-│  agentd/core/store.py      — SQLite CRUD (WAL, per-thread conn)  │
-│  agentd/core/config.py     — env + TOML config, provider setup  │
-│  agentd/security/vault.py  — AES/XOR encryption, JWT, RBAC      │
+│  kriya/core/store.py      — SQLite CRUD (WAL, per-thread conn)  │
+│  kriya/core/config.py     — env + TOML config, provider setup  │
+│  kriya/security/vault.py  — AES/XOR encryption, JWT, RBAC      │
 ├─────────────────────────────────────────────────────────────────┤
 │  BOOT                                                            │
-│  agentd/daemon.py          — asyncio boot: DB→skills→API→cron   │
+│  kriya/daemon.py          — asyncio boot: DB→skills→API→cron   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -64,22 +64,22 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 
 ## 3. Every File — Purpose and Key Decisions
 
-### `agentd/core/config.py`
-- Singleton `AgentOSConfig` dataclass loaded from env vars + optional `agentd.toml`
-- `BASE_DIR` is set from `AGENTD_VAULT_PASS` env or defaults to the source tree root
+### `kriya/core/config.py`
+- Singleton `KriyaConfig` dataclass loaded from env vars + optional `kriya.toml`
+- `BASE_DIR` is set from `KRIYA_VAULT_PASS` env or defaults to the source tree root
 - `LLMProviderConfig` list built from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_MODEL` env vars
 - Ollama is only enabled when `OLLAMA_MODEL` is explicitly set
 - **Pi Zero constraint:** `max_concurrent_agents=3`, `agent_memory_limit_mb=64`, `short_term_capacity=50`
 
-### `agentd/core/store.py`
-- All state in a single SQLite file at `BASE_DIR/agentd.db`
+### `kriya/core/store.py`
+- All state in a single SQLite file at `BASE_DIR/kriya.db`
 - One connection per thread (`threading.local`), WAL mode, `cache_size=-4096` (4 MB cap)
 - Tables: `projects`, `tasks`, `agents`, `agent_messages`, `events`, `memory`, `scheduled_jobs`, `users`, `skills`
 - Key helper functions: `insert()`, `update()`, `fetch_one()`, `fetch_where()`, `raw_query()`, `append_event()`
 - `insert()` auto-detects `updated_at` column via `PRAGMA table_info` before including it — important: not all tables have `updated_at`
 - `scheduled_jobs` has no `created_at` column — must use `raw_query` for inserts into it
 
-### `agentd/core/bus.py`
+### `kriya/core/bus.py`
 - `EventBus` class: `asyncio.Queue`-based pub/sub, wildcard `"*"` topic subscription
 - `emit_nowait()` for fire-and-forget from sync code
 - `request()` for request/reply pattern (private reply topic)
@@ -87,7 +87,7 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - Global singleton via `get_bus()`
 - Well-known topics in `Topics` class constants (e.g. `Topics.AGENT_DONE`, `Topics.TASK_FAILED`)
 
-### `agentd/core/agent.py`
+### `kriya/core/agent.py`
 - `AgentConfig` dataclass: id, task_id, project_id, role, model, provider, system_prompt, skills, max_tokens, temperature, max_retries, timeout
 - `AgentRunner.run()`: the full agent lifecycle — load secrets → recall memory → build prompt → LLM call → skill calls → persist output → emit events
 - **Skill call protocol:** agent output is scanned for `{"action": "skill_call", "skill": "...", "params": {...}}` JSON blocks. Up to 5 skill calls per turn before forced termination.
@@ -95,21 +95,21 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - `_build_system_prompt()`: assembles system prompt from role template + skills instructions + memory recall results + task context
 - Three roles: `executor` (default), `planner` (outputs JSON DAG), `critic` (outputs `{"approved": bool, "feedback": "..."}`)
 - Retry: exponential backoff with `asyncio.wait_for` timeout
-- **Important:** `call_llm` is imported at the top of this file. Mock it as `agentd.core.agent.call_llm` in tests, not `agentd.ai.llm.call_llm`
+- **Important:** `call_llm` is imported at the top of this file. Mock it as `kriya.core.agent.call_llm` in tests, not `kriya.ai.llm.call_llm`
 
-### `agentd/core/scheduler.py`
+### `kriya/core/scheduler.py`
 - `get_ready_tasks(project_id)`: returns tasks whose `depends_on` deps are all `done` and status is `pending`. Resolves deps by name OR id.
 - `run_task(task)`: runs all agents in a task sequentially (Pi Zero: no parallelism). Collects outputs into `combined_output` dict.
 - `run_project(project_id)`: iterates DAG in a while loop — find ready tasks → run them → check completion. Max iterations = `len(tasks) * 2 + 1`.
 - `CronScheduler`: polls `scheduled_jobs` every 10 seconds. Fires `run_project()` as async tasks.
 - `next_run_time()`: parses `@every Ns/m/h/d`, `@daily`, `@hourly`, `@weekly`, `@once`
 
-### `agentd/core/loader.py`
+### `kriya/core/loader.py`
 - `import_project(path)`: parses TOML → upserts `projects` table → deletes+re-creates `tasks` → registers `scheduled_jobs`
 - Requires Python 3.11+ for `tomllib` (stdlib). Python 3.10 users must create projects via API.
 - Agent configs are resolved by `id` from the `[[agents]]` array, matched to `tasks.*.agents = [...]`
 
-### `agentd/ai/llm.py`
+### `kriya/ai/llm.py`
 - `call_llm(messages, provider, model, max_tokens, temperature, fallback)` — single entry point
 - Provider routing: `provider="auto"` tries `["anthropic", "openai", "ollama"]` in order
 - Model override: `"anthropic/claude-3-5-haiku-20241022"` format splits on `/` to override model string
@@ -121,7 +121,7 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - OpenAI: standard `Authorization: Bearer` header, `/v1/chat/completions`
 - Ollama: `POST /api/chat`, `stream: false`, `options.num_predict` for max_tokens
 
-### `agentd/ai/memory.py`
+### `kriya/ai/memory.py`
 - `ShortTermMemory(agent_id, capacity)`: FIFO list, system messages always preserved, non-system trimmed to `capacity`
 - `ShortTermMemory.add()`: best-effort SQLite persist — uses try/except because agent row may not exist in tests
 - `LongTermMemory(project_id)`: cosine similarity over `memory` table in SQLite
@@ -130,8 +130,8 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - `LongTermMemory.recall(query, top_k, min_score)`: embeds query, loads last 500 memories from DB, scores all, returns top_k above threshold
 - Upgrade path: replace `_embed()` with `POST /api/embeddings` to Ollama for real semantic embeddings
 
-### `agentd/api/server.py`
-- `AgentOSHandler(BaseHTTPRequestHandler)` — the HTTP handler
+### `kriya/api/server.py`
+- `KriyaHandler(BaseHTTPRequestHandler)` — the HTTP handler
 - `@route(method, path)` decorator registers handlers in `_routes` dict
 - Parametric routes: `<id>` style segments matched by splitting path on `/`
 - `_serve_static()`: serves `static/` with path traversal protection. Falls back to source-tree `static/` if `BASE_DIR/static/` doesn't exist (dev mode)
@@ -140,27 +140,27 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - `/api/status` returns: `status`, `version`, `arch`, `providers`, `uptime_s`, `db`
 - API server runs in a daemon `Thread`, not the asyncio loop
 
-### `agentd/security/vault.py`
+### `kriya/security/vault.py`
 - `hash_password(password)` → `salt:pbkdf2_hex` (100k iterations). Legacy sha256 hashes also verified for backward compat.
 - `issue_token(user_id, username, role)` → HS256 JWT string (base64url header.payload.sig)
 - `verify_token(token)` → claims dict or `None`
 - `_get_master_key()`: loads or generates 32-byte master key. Stored as `vault/master.key` = `salt(16) + XOR(master, pbkdf2(VAULT_PASS, salt))`
 - `_encrypt(plaintext)` → `"aes:..."` (AES-256-GCM if `cryptography` installed) or `"xor:..."` (HMAC-XOR fallback)
 - `set_secret(project_id, key, value)`: writes `vault/<project_id>/<key>.enc`
-- `get_secret(project_id, key)`: reads vault file, or falls back to `AGENTD_SECRET_<PROJECT>_<KEY>` env var, or plain env var named `key`
+- `get_secret(project_id, key)`: reads vault file, or falls back to `KRIYA_SECRET_<PROJECT>_<KEY>` env var, or plain env var named `key`
 
-### `agentd/daemon.py`
+### `kriya/daemon.py`
 - `boot()` coroutine: `init_db()` → `register_builtin_skills()` → `_load_plugin_skills()` → `start_api_server()` → `CronScheduler` task → heartbeat task → `_shutdown_event.wait()`
 - `_load_plugin_skills()`: scans `skills/*/handler.py`, imports each module, auto-registers if `SKILL_ID` and `handle()` defined
 - `_arch_label()`: `platform.machine()` → human string (ARMv6/ARMv7/ARM64/x86_64)
 - `_build_banner()`: dynamic banner with detected arch and Python version (printed at boot)
 - Handles `SIGINT` and `SIGTERM` for graceful shutdown
 
-### `agentd/integrations/builtin_skills.py`
+### `kriya/integrations/builtin_skills.py`
 Seven skills, all stdlib-only:
 - `http.call`: GET/POST/etc with custom headers and body
 - `web.scrape`: fetch URL, strip HTML to plain text (regex-based, no BS4)
-- `fs.write`: write to `/tmp/` or `/var/lib/agentd/projects/` only
+- `fs.write`: write to `/tmp/` or `/var/lib/kriya/projects/` only
 - `fs.read`: read file content with byte cap
 - `system.shell`: whitelisted prefix check, then `subprocess.run` with timeout
 - `memory.remember`: calls `LongTermMemory.remember()`
@@ -168,9 +168,9 @@ Seven skills, all stdlib-only:
 
 ### `bin/agent`
 CLI with `argparse`. Commands: `start`, `login`, `status`, `project`, `task`, `agent`, `secret`, `skill`, `run`, `monitor`, `logs`, `user`.
-- Auth token saved to `~/.agentd_token`
+- Auth token saved to `~/.kriya_token`
 - `monitor` command: polls every 2s, clears screen (`\033[2J\033[H`), draws task/agent status table
-- `agent start` imports and calls `agentd.daemon.main()` directly (no subprocess)
+- `agent start` imports and calls `kriya.daemon.main()` directly (no subprocess)
 - `agent run <file.toml>`: calls `import_project()` directly (no daemon needed for loading), then POSTs to `/api/projects/<id>/run`
 
 ### `static/dashboard.html`
@@ -187,7 +187,7 @@ CLI with `argparse`. Commands: `start`, `login`, `status`, `project`, `task`, `a
 - Detects `uname -m` → sets `ARCH_LABEL`, `ARCH_WARN` (warn if ARMv6)
 - Memory limits per arch: ARMv6 → 180M, ARMv7 → 320M, ARM64/x86_64 → 512M
 - Agent count defaults: ARMv6 → 1, ARMv7 → 2, others → 4
-- Generates `agentd.env` with arch header comment
+- Generates `kriya.env` with arch header comment
 - Writes systemd unit file dynamically with correct `$PYTHON` path and `MemoryMax`
 
 ---
@@ -242,8 +242,8 @@ msg = await asyncio.wait_for(q.get(), timeout=30)
 
 ### Config singleton reset in tests
 ```python
-import agentd.core.config as cfg_mod
-cfg_mod._config = None  # force re-read with new AGENTD_BASE
+import kriya.core.config as cfg_mod
+cfg_mod._config = None  # force re-read with new KRIYA_BASE
 ```
 This pattern is used in every test that needs an isolated temp directory.
 
@@ -253,7 +253,7 @@ This pattern is used in every test that needs an isolated temp directory.
 
 | Component | Status | Notes |
 |---|---|---|
-| Core daemon (`agentd/daemon.py`) | ✅ Complete | Boot, signals, plugin loader |
+| Core daemon (`kriya/daemon.py`) | ✅ Complete | Boot, signals, plugin loader |
 | SQLite state store | ✅ Complete | All tables, WAL, thread-safe |
 | Async event bus | ✅ Complete | pub/sub, wildcard, request/reply |
 | LLM abstraction (Anthropic/OpenAI/Ollama) | ✅ Complete | Pure urllib, fallback chain |
@@ -349,7 +349,7 @@ The current system runs agents sequentially within a task. True multi-agent coll
 ### 7.3 Web Dashboard Enhancements (v2 Priority 3)
 
 **Missing screens:**
-- `Settings` page: live-edit `AGENTD_MAX_AGENTS`, LLM provider status, vault passphrase change
+- `Settings` page: live-edit `KRIYA_MAX_AGENTS`, LLM provider status, vault passphrase change
 - `Users` page: create/delete users, change roles (POST /api/users — endpoint not yet built)
 - `Memory browser`: query long-term memory per project, delete individual memories
 
@@ -384,7 +384,7 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 
 ### 7.5 Skill SDK & Registry (v2 Priority 4)
 
-**Formal SDK** (`agentd/sdk.py`):
+**Formal SDK** (`kriya/sdk.py`):
 - Currently there is an informal convention (`SKILL_ID`, `def handle(params, secrets) -> dict`)
 - A proper SDK should export: `SkillHandler` base class, `register_skill` decorator, `SkillResult` dataclass, `SkillError` exception
 - Parameter schema validation: define params with types and defaults, validate on call
@@ -406,7 +406,7 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 - When `OLLAMA_BASE_URL` is set, replace `_embed()` in `memory.py` with a call to `POST {OLLAMA_BASE_URL}/api/embeddings`
 - Model: `nomic-embed-text` (2GB but much better semantic search)
 - Pi Zero W: Ollama not supported (ARMv6). Pi Zero 2W and up: use `all-minilm:l6-v2` (45MB)
-- Pattern: feature-flag based on `AGENTD_EMBEDDING_MODEL` env var
+- Pattern: feature-flag based on `KRIYA_EMBEDDING_MODEL` env var
 
 **Memory importance decay:**
 - Currently `importance` is static. Add time decay: `effective_score = cosine * importance * exp(-age_days / 30)`
@@ -421,14 +421,14 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 
 **Structured logging to files:**
 - Currently all logs go to stdout/journald
-- Add `LOG_DIR/agentd.jsonl` append-only structured log with full context
+- Add `LOG_DIR/kriya.jsonl` append-only structured log with full context
 - Log format: `{"ts": 1234567890.123, "level": "INFO", "component": "scheduler", "event": "task.done", "task_id": "...", "duration_ms": 4321}`
 
 **Prometheus metrics endpoint:**
 - `GET /api/metrics` returning Prometheus text format
-- Counters: `agentd_agents_total{state="done"}`, `agentd_tokens_total{provider="anthropic"}`
-- Gauges: `agentd_projects_running`, `agentd_memory_entries{project_id="..."}`
-- Histograms: `agentd_agent_duration_seconds`, `agentd_llm_latency_seconds{provider="..."}`
+- Counters: `kriya_agents_total{state="done"}`, `kriya_tokens_total{provider="anthropic"}`
+- Gauges: `kriya_projects_running`, `kriya_memory_entries{project_id="..."}`
+- Histograms: `kriya_agent_duration_seconds`, `kriya_llm_latency_seconds{provider="..."}`
 
 **OpenTelemetry trace export:**
 - Events already carry `trace_id`; add full span hierarchy
@@ -442,7 +442,7 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 
 **Rate limiting:**
 - API server currently has no rate limiting
-- Add a simple per-IP token bucket in `AgentOSHandler._dispatch()` using a `defaultdict(deque)` in memory
+- Add a simple per-IP token bucket in `KriyaHandler._dispatch()` using a `defaultdict(deque)` in memory
 
 **Audit log integrity:**
 - Currently audit log (SQLite `events` table) is mutable
@@ -459,8 +459,8 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 
 **Buildroot or custom Pi OS image:**
 - `debootstrap` Debian 12 Bookworm minimal (armhf for Pi Zero W)
-- Install: Python 3.11, AgentOS source, systemd unit
-- Pre-configured `agentd.toml.example` and env template
+- Install: Python 3.11, Kriya source, systemd unit
+- Pre-configured `kriya.toml.example` and env template
 - First-boot script: prompt for WiFi credentials + API key, then start daemon
 - Image size target: <2 GB (fits on 4 GB SD card)
 - Build script: `deploy/build-image.sh` using `debootstrap` + `losetup` + `dd`
@@ -485,11 +485,11 @@ These endpoints are referenced in the README or dashboard but not yet implemente
 
 ### Step 1: Clone and verify baseline
 ```bash
-git clone https://github.com/YOUR_USERNAME/agentos
-cd agentos
+git clone https://github.com/YOUR_USERNAME/kriya
+cd kriya
 export ANTHROPIC_API_KEY=sk-ant-...
 python3 tests/test_suite.py    # must be 40/40
-python3 agentd/daemon.py &
+python3 kriya/daemon.py &
 open http://localhost:7777
 ```
 
@@ -516,9 +516,9 @@ Each item in section 7 is designed to be built independently without touching ex
 
 For every new skill:
 ```python
-# In tests/test_suite.py, add to AgentOSTestCase:
+# In tests/test_suite.py, add to KriyaTestCase:
 def test_skill_telegram_send(self):
-    from agentd.integrations.builtin_skills import skill_telegram_send  # or from skills.telegram.handler
+    from kriya.integrations.builtin_skills import skill_telegram_send  # or from skills.telegram.handler
     # Test with missing token
     result = skill_telegram_send({"chat_id": "123", "text": "hello"}, {})
     self.assertIn("error", result)
@@ -560,11 +560,11 @@ OLLAMA_BASE_URL=http://localhost:11434        # default
 OLLAMA_MODEL=llama3                           # must set to enable Ollama
 
 # Daemon
-AGENTD_BASE=/var/lib/agentd                   # where DB, vault, logs live
-AGENTD_HOST=0.0.0.0
-AGENTD_PORT=7777
-AGENTD_LOG_LEVEL=INFO
-AGENTD_JWT_SECRET=<32-hex-chars>              # set for persistence across restarts
-AGENTD_VAULT_PASS=<passphrase>               # MUST set before first run
-AGENTD_MAX_AGENTS=3                           # 1-2 for Pi Zero W
+KRIYA_BASE=/var/lib/kriya                   # where DB, vault, logs live
+KRIYA_HOST=0.0.0.0
+KRIYA_PORT=7777
+KRIYA_LOG_LEVEL=INFO
+KRIYA_JWT_SECRET=<32-hex-chars>              # set for persistence across restarts
+KRIYA_VAULT_PASS=<passphrase>               # MUST set before first run
+KRIYA_MAX_AGENTS=3                           # 1-2 for Pi Zero W
 ```

@@ -4,7 +4,7 @@ PYTHON := $(shell command -v python3.11 2>/dev/null || command -v python3.12 2>/
 
 help:
 	@echo ""
-	@echo "  AgentOS — make targets"
+	@echo "  Kriya — make targets"
 	@echo ""
 	@echo "  make run      Start the daemon (foreground)"
 	@echo "  make test     Run the full test suite (40 tests)"
@@ -14,13 +14,13 @@ help:
 	@echo ""
 
 run:
-	$(PYTHON) agentd/daemon.py
+	$(PYTHON) kriya/daemon.py
 
 test:
-	$(PYTHON) tests/test_suite.py
+	$(PYTHON) tests/test_kriya.py
 
 lint:
-	@$(PYTHON) -m pyflakes agentd/ bin/agent 2>&1 || true
+	@$(PYTHON) -m pyflakes kriya/ bin/kriya 2>&1 || true
 
 install:
 	sudo bash deploy/install.sh
@@ -28,5 +28,5 @@ install:
 clean:
 	find . -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
-	rm -f agentd.db agentd.db-wal agentd.db-shm agentd.pid agentd.sock
+	rm -f kriya.db kriya.db-wal kriya.db-shm kriya.pid kriya.sock
 	rm -f logs/*.jsonl vault/*.enc vault/master.key
