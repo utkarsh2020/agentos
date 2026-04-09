@@ -2,8 +2,8 @@
 
 **For:** AI-assisted development continuation (Kilo Code / Claude)  
 **Version at handoff:** v0.3.0  
-**Test status:** 38/40 passing (2 pre-existing failures on Python 3.9: dict|list hint + macOS /tmp path; pass on Python 3.11)  
-**Total source:** ~6,500 lines across 32 files, zero external dependencies
+**Test status:** 41/41 passing (Python 3.9.6; 1 skipped for TOML on <3.11)  
+**Total source:** ~7,000 lines across 33 files, zero external dependencies
 
 ---
 
@@ -249,7 +249,7 @@ This pattern is used in every test that needs an isolated temp directory.
 
 ---
 
-## 6. What Is Complete (v0.2.1)
+## 6. What Is Complete (v0.3.0)
 
 | Component | Status | Notes |
 |---|---|---|
@@ -262,13 +262,13 @@ This pattern is used in every test that needs an isolated temp directory.
 | Agent executor | ✅ Complete | Lifecycle, skill calls, retry |
 | Task DAG scheduler | ✅ Complete | Dependency resolution, cron |
 | TOML project loader | ✅ Complete | Requires Python 3.11+ |
-| REST API (20+ endpoints) | ✅ Complete | stdlib http.server |
+| REST API (30+ endpoints) | ✅ Complete | stdlib http.server, Python 3.9+ |
 | JWT auth + RBAC | ✅ Complete | HS256, 5 roles |
 | Secrets vault | ✅ Complete | AES-GCM / HMAC-XOR, PBKDF2 |
 | Built-in skills (7) | ✅ Complete | http, scrape, fs, shell, memory |
 | Plugin skill loader | ✅ Complete | Auto-discover skills/*/handler.py |
-| Telegram skill | ✅ Complete | `skills/telegram/handler.py` — send + get_updates |
-| Slack skill | ✅ Complete | `skills/slack/handler.py` — post + history + channels |
+| Telegram skill | ✅ Complete | send, send_photo, get_updates, set/delete webhook |
+| Slack skill | ✅ Complete | post, history, channels, users_info, webhook |
 | User management API | ✅ Complete | GET/POST /api/users, DELETE, PUT role/password |
 | Memory API | ✅ Complete | GET + DELETE /api/projects/<id>/memory |
 | Task delete + schedule API | ✅ Complete | DELETE tasks/<id>, PUT schedule |
@@ -277,8 +277,9 @@ This pattern is used in every test that needs an isolated temp directory.
 | Static file serving | ✅ Complete | Path-traversal protected |
 | Multi-arch support (32/64-bit) | ✅ Complete | ARMv6/v7/ARM64/x86_64 |
 | systemd service + installer | ✅ Complete | Arch-aware memory limits |
-| Test suite | ✅ Complete | 40 tests, unit + integration |
-| README | ✅ Complete | 798 lines, full reference |
+| Installation guide | ✅ Complete | INSTALL.md — all platforms, troubleshooting |
+| Test suite | ✅ Complete | 41 tests, unit + integration, 0 failures |
+| README | ✅ Complete | ~1,070 lines, full reference |
 | .gitignore, Makefile, CONTRIBUTING | ✅ Complete | Standard repo scaffolding |
 
 ---

@@ -362,7 +362,7 @@ def cmd_agent(args):
             for m in msgs[-6:]:
                 role_col = GREEN if m["role"] == "assistant" else CYAN
                 content  = m["content"][:120].replace("\n", " ")
-                print(f"    {_color(m['role'][:9]:<9, role_col)} {content}")
+                print(f"    {_color(m['role'][:9].ljust(9), role_col)} {content}")
         print()
 
     else:
@@ -489,7 +489,7 @@ def _cmd_monitor_project(project_id: str, name: str):
                         "running": AMBER, "pending": DIM,
                     }.get(a["state"], "")
                     tok = a.get("token_usage", 0)
-                    print(f"       {_color(asym, asc)}  {_color(a['role'][:8]:<10, DIM)} "
+                    print(f"       {_color(asym, asc)}  {_color(a['role'][:8].ljust(10), DIM)} "
                           f"{a['model'][:28]:<30} {_color(str(tok) + 't', DIM)}")
 
             # Recent events

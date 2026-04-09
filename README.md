@@ -10,7 +10,7 @@ A self-hosted runtime for orchestrating AI agents, task pipelines, and multi-cha
  //_\\ / _` |/ _ \ '_ \| __| | | \___ \
 /  _  \ (_| |  __/ | | | |_| |_| |___) |
 \_/ \_/\__, |\___|_| |_|\__|\___/|____/
-       |___/  v0.2.0
+       |___/  v0.3.0
 ```
 
 ---
@@ -21,7 +21,7 @@ A self-hosted runtime for orchestrating AI agents, task pipelines, and multi-cha
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
-- [Installation](#installation)
+- [Installation](#installation) — see also **[INSTALL.md](INSTALL.md)** for comprehensive guide
   - [Development (any Linux/macOS)](#development-any-linuxmacos)
   - [Raspberry Pi (production)](#raspberry-pi-production)
   - [Systemd service](#systemd-service)
@@ -1025,12 +1025,20 @@ kriya/
 
 ### v0.3.0
 - **Communication skills** — `telegram.send` and `slack.post` plugin skills
-  - `telegram.send`: send messages and poll updates via the Telegram Bot API (stdlib `urllib.request` only)
-  - `slack.post`: post messages, read channel history, list channels via the Slack Web API
+  - `telegram.send`: send messages, send photos, poll updates via the Telegram Bot API (stdlib only)
+  - `slack.post`: post messages, read channel history, list channels, user info via the Slack Web API
   - Both support project vault secrets (`TELEGRAM_BOT_TOKEN`, `SLACK_TOKEN`, etc.)
 - **User management API** — `GET/POST /api/users`, `DELETE /api/users/<id>`, `PUT /api/users/<id>/role`, `PUT /api/users/<id>/password`
 - **Memory API** — `GET /api/projects/<id>/memory`, `DELETE /api/projects/<id>/memory/<mid>`
 - **Task / schedule API** — `DELETE /api/projects/<id>/tasks/<id>`, `PUT /api/projects/<id>/schedule`
+- **Installation guide** — comprehensive `INSTALL.md` with platform-specific instructions
+- **Bug fixes:**
+  - Fixed `from __future__ import annotations` for Python 3.9 compatibility in `server.py`
+  - Fixed `store.update()` calls using dict positional args instead of kwargs (schedule endpoint)
+  - Fixed CLI `bin/agent` f-string syntax errors in monitor and agent inspect displays
+  - Fixed `fs.write` skill path check on macOS (symlinked `/tmp` → `/private/tmp`)
+  - Removed duplicate endpoint definitions from merge artifacts in `server.py`
+  - Test suite: **41/41 passing** (up from 38)
 
 ### v0.2.0
 - **Multi-architecture support** — explicit 32-bit (ARMv6, ARMv7) and 64-bit (ARM64, x86_64) coverage

@@ -16,7 +16,6 @@ Params:
 import json
 import urllib.request
 import urllib.error
-import urllib.parse
 
 SKILL_ID = "telegram.send"
 
