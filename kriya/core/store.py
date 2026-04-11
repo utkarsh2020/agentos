@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, Any
 
-from kriya.core.config import DB_PATH
+from kriya.core.config import DB_PATH, BASE_DIR
 
 
 # Allowlist of valid table names — prevents SQL injection via table-name interpolation
@@ -173,10 +173,31 @@ def _ensure_admin():
             (str(uuid.uuid4()), "admin", ph, "admin", time.time())
         )
         c.commit()
+
+        # Write credentials to a file so they survive across systemd journal rotations.
+        # The file is deleted automatically when the admin password is first changed.
+        cred_file = BASE_DIR / "first_run_credentials.txt"
+        try:
+            cred_file.write_text(
+                f"Kriya first-run credentials\n"
+                f"===========================\n"
+                f"username : admin\n"
+                f"password : {pw}\n\n"
+                f"Change this password immediately:\n"
+                f"  agent user passwd admin\n"
+                f"  (or via the web dashboard at http://<host>:7777)\n\n"
+                f"This file is deleted automatically after the password is changed.\n"
+            )
+            cred_file.chmod(0o600)
+            print(f"[db] *** First-run credentials written to: {cred_file} ***")
+        except Exception as e:
+            # File write is best-effort; credentials are still printed to stdout
+            print(f"[db] Warning: could not write credentials file: {e}")
+
         print("[db] *** Default admin created ***")
         print(f"[db]   username : admin")
         print(f"[db]   password : {pw}")
-        print("[db]   SAVE THIS PASSWORD — it will not be shown again.")
+        print(f"[db]   Credentials also saved to: {cred_file}")
 
 
 # ── Generic CRUD helpers ──────────────────────────────────────────────────

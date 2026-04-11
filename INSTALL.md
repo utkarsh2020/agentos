@@ -69,7 +69,17 @@ python3 bin/agent status
 open http://localhost:7777
 ```
 
-On first boot, a random admin password is generated and printed once to the console — save it immediately, then change it:
+On first boot, a random admin password is generated and saved to `first_run_credentials.txt` in the data directory:
+
+```bash
+# Development
+cat first_run_credentials.txt
+
+# Production (systemd install)
+cat /var/lib/kriya/first_run_credentials.txt
+```
+
+The file is deleted automatically after you change the admin password. Change it immediately:
 
 ```bash
 python3 bin/agent user passwd admin
@@ -171,9 +181,10 @@ journalctl -u kriya -f
 **Step 4: Login and verify**
 
 ```bash
-agent login              # use the password printed at first boot
+cat /var/lib/kriya/first_run_credentials.txt   # get the generated admin password
+agent login              # use the password from the file above
 agent status             # should show "running"
-agent user passwd admin  # set a new password
+agent user passwd admin  # change the password (deletes the credentials file)
 ```
 
 **Step 5: Open the dashboard**
@@ -326,8 +337,8 @@ curl -s http://localhost:7777/api/health
 # Should return: {"ok": true}
 
 # 4. Login works
+cat /var/lib/kriya/first_run_credentials.txt   # get the generated password
 agent login
-# Enter: admin + the password printed at first boot
 
 # 5. Dashboard loads
 curl -s -o /dev/null -w "%{http_code}" http://localhost:7777/

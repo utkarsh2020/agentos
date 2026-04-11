@@ -17,13 +17,19 @@ from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
 from kriya.core import store
-from kriya.core.config import get_config
+from kriya.core.config import get_config, BASE_DIR
 from kriya.core.scheduler import run_project, next_run_time, CronScheduler
 from kriya.security.vault import (
     authenticate, verify_token, has_capability,
     set_secret, get_secret, list_secrets, delete_secret,
     hash_password, ROLES,
 )
+
+
+def _remove_credentials_file():
+    """Delete the first-run credentials file after the password has been changed."""
+    cred_file = BASE_DIR / "first_run_credentials.txt"
+    cred_file.unlink(missing_ok=True)
 
 
 def _get_arch() -> str:
@@ -592,6 +598,8 @@ def change_user_password(h: KriyaHandler, *_, **params):
     if not password:
         return h._err("password required")
     store.update("users", params["id"], password_hash=hash_password(password))
+    # Remove the first-run credentials file once any password is changed
+    _remove_credentials_file()
     h._send({"updated": True})
 
 

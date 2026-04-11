@@ -122,7 +122,13 @@ python3 bin/agent run examples/newsletter.toml --follow
 open http://localhost:7777      # or http://<pi-ip>:7777
 ```
 
-On first boot, a random admin password is generated and printed to the console once — save it immediately.
+On first boot, a random admin password is generated and saved to `first_run_credentials.txt` in the data directory. Read it, login, then change the password immediately:
+
+```bash
+cat first_run_credentials.txt      # dev — or /var/lib/kriya/first_run_credentials.txt on Pi
+agent login
+agent user passwd admin            # file is deleted automatically after this
+```
 
 ---
 
