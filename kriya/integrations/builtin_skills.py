@@ -3,9 +3,12 @@ Kriya – Built-in skills (stdlib only)
 Registered at daemon startup.
 Each skill: handler(params: dict, secrets: dict) -> dict
 """
+import ipaddress
 import json
 import logging
 import os
+import re
+import shlex
 import time
 import urllib.request
 import urllib.error
@@ -13,6 +16,43 @@ import urllib.parse
 from pathlib import Path
 
 log = logging.getLogger("kriya.skills")
+
+
+# ── SSRF guard ─────────────────────────────────────────────────────────────
+
+_PRIVATE_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local / EC2 metadata
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """Return (ok, reason). Blocks private IPs, loopback, and non-http(s) schemes."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False, "invalid URL"
+    if parsed.scheme not in ("http", "https"):
+        return False, f"scheme {parsed.scheme!r} not allowed (use http or https)"
+    host = parsed.hostname or ""
+    if not host:
+        return False, "missing host"
+    # Block known internal hostnames by name
+    lower = host.lower()
+    if lower in ("localhost",) or lower.endswith(".local") or lower.endswith(".internal"):
+        return False, f"host {host!r} resolves to an internal address"
+    try:
+        addr = ipaddress.ip_address(host)
+        for net in _PRIVATE_NETS:
+            if addr in net:
+                return False, f"IP {host} is in a private/reserved range"
+    except ValueError:
+        pass  # hostname, not a raw IP — allow (DNS resolution happens later)
+    return True, ""
 
 
 # ── http.call ──────────────────────────────────────────────────────────────
@@ -30,6 +70,10 @@ def skill_http_call(params: dict, secrets: dict) -> dict:
 
     if not url:
         return {"error": "url is required"}
+
+    ok, reason = _is_safe_url(url)
+    if not ok:
+        return {"error": f"URL blocked: {reason}"}
 
     data = json.dumps(body).encode() if body else None
     if data and "Content-Type" not in headers:
@@ -120,6 +164,8 @@ def skill_fs_write(params: dict, secrets: dict) -> dict:
 
 # ── fs.read ────────────────────────────────────────────────────────────────
 
+_FS_ALLOWED_READ = [Path("/tmp").resolve(), Path("/var/lib/kriya/projects").resolve()]
+
 def skill_fs_read(params: dict, secrets: dict) -> dict:
     """
     Read file content.
@@ -129,21 +175,31 @@ def skill_fs_read(params: dict, secrets: dict) -> dict:
     max_bytes = params.get("max_bytes", 8192)
     if not path:
         return {"error": "path required"}
+    p = Path(path).resolve()
+    if not any(str(p).startswith(str(a)) for a in _FS_ALLOWED_READ):
+        return {"error": f"Read not allowed from {p} – use /tmp or project dirs"}
     try:
-        with open(path, "r", errors="replace") as f:
+        with open(p, "r", errors="replace") as f:
             content = f.read(max_bytes)
-        return {"content": content, "path": path}
+        return {"content": content, "path": str(p)}
     except FileNotFoundError:
-        return {"error": f"File not found: {path}"}
+        return {"error": f"File not found: {p}"}
     except Exception as e:
         return {"error": str(e)}
 
 
 # ── system.shell ───────────────────────────────────────────────────────────
 
+# Exact set of allowed base commands (first token only).
+_SHELL_ALLOWED_CMDS = frozenset({
+    "df", "du", "free", "uptime", "date", "hostname", "ls", "pwd", "echo",
+})
+# Reject shell metacharacters that could be used for injection even without shell=True.
+_SHELL_METACHAR = re.compile(r'[;&|`$()<>\\!]')
+
 def skill_system_shell(params: dict, secrets: dict) -> dict:
     """
-    Run a shell command (whitelist enforced).
+    Run a shell command (exact base-command allowlist enforced, shell=False).
     params: {command}
     """
     import subprocess
@@ -151,15 +207,25 @@ def skill_system_shell(params: dict, secrets: dict) -> dict:
     if not cmd:
         return {"error": "command required"}
 
-    # Safety: very minimal allowlist for Pi Zero system info commands
-    ALLOWED_PREFIXES = ("df ", "du ", "free", "uptime", "date", "hostname",
-                        "cat /proc/", "ls ", "pwd", "echo ")
-    if not any(cmd.startswith(p) for p in ALLOWED_PREFIXES):
-        return {"error": f"Command not in allowlist: {cmd!r}"}
+    # Reject shell metacharacters before any parsing
+    if _SHELL_METACHAR.search(cmd):
+        return {"error": "Shell metacharacters are not allowed"}
+
+    try:
+        parts = shlex.split(cmd)
+    except ValueError as e:
+        return {"error": f"Invalid command syntax: {e}"}
+
+    if not parts:
+        return {"error": "Empty command"}
+
+    base_cmd = parts[0]
+    if base_cmd not in _SHELL_ALLOWED_CMDS:
+        return {"error": f"Command {base_cmd!r} not in allowlist: {sorted(_SHELL_ALLOWED_CMDS)}"}
 
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=10
+            parts, shell=False, capture_output=True, text=True, timeout=10
         )
         return {
             "stdout": result.stdout[:2048],

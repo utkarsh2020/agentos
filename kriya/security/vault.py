@@ -120,8 +120,25 @@ def authenticate(username: str, password: str) -> Optional[str]:
 def _get_master_key() -> bytes:
     """Derive or load master key. Stored in vault/master.key (encrypted with env passphrase)."""
     key_file = VAULT_DIR / "master.key"
-    passphrase = os.environ.get("KRIYA_VAULT_PASS", "kriya-default-change-me")
-    
+    passphrase = os.environ.get("KRIYA_VAULT_PASS")
+
+    if not passphrase:
+        # No env var set — use a machine-local auto-generated passphrase persisted to disk.
+        # This is weaker than a user-supplied passphrase but far better than a hardcoded default.
+        pass_file = VAULT_DIR / ".vault_passphrase"
+        pass_file.parent.mkdir(parents=True, exist_ok=True)
+        if pass_file.exists():
+            passphrase = pass_file.read_text().strip()
+        else:
+            import logging as _log
+            _log.getLogger("kriya.vault").warning(
+                "KRIYA_VAULT_PASS not set — generating a machine-local vault passphrase. "
+                "Set KRIYA_VAULT_PASS in the environment for production deployments."
+            )
+            passphrase = secrets.token_hex(32)
+            pass_file.write_text(passphrase)
+            pass_file.chmod(0o400)
+
     if key_file.exists():
         raw = key_file.read_bytes()
         # raw = salt(16) + encrypted_key(32)
@@ -193,9 +210,10 @@ def set_secret(project_id: str, key: str, value: str):
 def get_secret(project_id: str, key: str) -> Optional[str]:
     path = VAULT_DIR / project_id / f"{key}.enc"
     if not path.exists():
-        # Fall back to environment variable
+        # Fall back to the namespaced env var only — never fall back to arbitrary env keys
+        # to prevent agents from extracting JWT secrets, API keys, etc.
         env_key = f"KRIYA_SECRET_{project_id.upper()}_{key.upper()}"
-        return os.environ.get(env_key) or os.environ.get(key)
+        return os.environ.get(env_key)
     return _decrypt(path.read_text())
 
 

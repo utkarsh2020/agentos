@@ -15,6 +15,17 @@ from typing import Optional, Any
 from kriya.core.config import DB_PATH
 
 
+# Allowlist of valid table names — prevents SQL injection via table-name interpolation
+_ALLOWED_TABLES = frozenset({
+    "projects", "tasks", "agents", "agent_messages",
+    "events", "memory", "scheduled_jobs", "users", "skills",
+})
+
+def _validate_table(table: str) -> None:
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"Invalid table name: {table!r}")
+
+
 # One connection per thread
 _local = threading.local()
 
@@ -150,23 +161,28 @@ def init_db():
 
 def _ensure_admin():
     """Create default admin user if no users exist."""
-    import hashlib, secrets as _sec
+    import secrets as _sec
     c = _conn()
     if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-        pw = "agentadmin"   # printed at startup, user must change
-        ph = hashlib.sha256(pw.encode()).hexdigest()
+        # Generate a random one-time password — never use a hardcoded default
+        from kriya.security.vault import hash_password
+        pw = _sec.token_urlsafe(16)
+        ph = hash_password(pw)
         c.execute(
             "INSERT INTO users VALUES (?,?,?,?,?)",
             (str(uuid.uuid4()), "admin", ph, "admin", time.time())
         )
         c.commit()
-        print("[db] Default admin created – username: admin  password: agentadmin")
-        print("[db] Change immediately: agent user passwd admin")
+        print("[db] *** Default admin created ***")
+        print(f"[db]   username : admin")
+        print(f"[db]   password : {pw}")
+        print("[db]   SAVE THIS PASSWORD — it will not be shown again.")
 
 
 # ── Generic CRUD helpers ──────────────────────────────────────────────────
 
 def insert(table: str, **kwargs) -> str:
+    _validate_table(table)
     if "id" not in kwargs:
         kwargs["id"] = str(uuid.uuid4())
     now = time.time()
@@ -184,6 +200,7 @@ def insert(table: str, **kwargs) -> str:
 
 
 def update(table: str, id: str, **kwargs):
+    _validate_table(table)
     table_cols = {row["name"] for row in _conn().execute(f"PRAGMA table_info({table})").fetchall()}
     if "updated_at" in table_cols:
         kwargs["updated_at"] = time.time()
@@ -193,11 +210,13 @@ def update(table: str, id: str, **kwargs):
 
 
 def fetch_one(table: str, id: str) -> Optional[dict]:
+    _validate_table(table)
     row = _conn().execute(f"SELECT * FROM {table} WHERE id=?", (id,)).fetchone()
     return dict(row) if row else None
 
 
 def fetch_where(table: str, **kwargs) -> list[dict]:
+    _validate_table(table)
     if not kwargs:
         rows = _conn().execute(f"SELECT * FROM {table}").fetchall()
     else:
@@ -207,10 +226,12 @@ def fetch_where(table: str, **kwargs) -> list[dict]:
 
 
 def fetch_all(table: str) -> list[dict]:
+    _validate_table(table)
     return [dict(r) for r in _conn().execute(f"SELECT * FROM {table}").fetchall()]
 
 
 def delete(table: str, id: str):
+    _validate_table(table)
     _conn().execute(f"DELETE FROM {table} WHERE id=?", (id,))
     _conn().commit()
 

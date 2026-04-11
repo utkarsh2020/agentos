@@ -52,6 +52,10 @@ class KriyaConfig:
     jwt_secret: str = ""             # generated at first boot if empty
     jwt_ttl_sec: int = 3600
 
+    # CORS — list of allowed origins. Empty list = no CORS headers (safest default).
+    # Set to ["*"] only for fully public, unauthenticated APIs.
+    cors_origins: dataclasses.field(default_factory=list) = dataclasses.field(default_factory=list)
+
     # Providers – populated from env / config file
     providers: dataclasses.field(default_factory=list) = dataclasses.field(default_factory=list)
 
@@ -69,6 +73,8 @@ def load_config() -> KriyaConfig:
     if v := _env("KRIYA_LOG_LEVEL"):   cfg.log_level = v
     if v := _env("KRIYA_JWT_SECRET"):  cfg.jwt_secret = v
     if v := _env("KRIYA_MAX_AGENTS"):  cfg.max_concurrent_agents = int(v)
+    if v := _env("KRIYA_CORS_ORIGINS"):
+        cfg.cors_origins = [o.strip() for o in v.split(",") if o.strip()]
 
     # Try loading TOML config (Python 3.11+)
     toml_path = BASE_DIR / "kriya.toml"
@@ -85,10 +91,17 @@ def load_config() -> KriyaConfig:
     # Build provider list from environment
     cfg.providers = _load_providers()
 
-    # Generate JWT secret if missing
+    # Persist JWT secret so tokens survive restarts.
+    # Priority: env var > kriya.toml > persisted file > generate new.
     if not cfg.jwt_secret:
         import secrets as _sec
-        cfg.jwt_secret = _sec.token_hex(32)
+        secret_file = BASE_DIR / ".jwt_secret"
+        if secret_file.exists():
+            cfg.jwt_secret = secret_file.read_text().strip()
+        else:
+            cfg.jwt_secret = _sec.token_hex(32)
+            secret_file.write_text(cfg.jwt_secret)
+            secret_file.chmod(0o600)
 
     return cfg
 

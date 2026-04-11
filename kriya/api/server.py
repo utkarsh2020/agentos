@@ -10,8 +10,9 @@ import json
 import logging
 import time
 import uuid
+from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
+from threading import Thread, Lock
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
@@ -36,6 +37,28 @@ def _get_arch() -> str:
 log = logging.getLogger("kriya.api")
 
 
+# ── Login rate limiter ─────────────────────────────────────────────────────
+# Blocks brute-force attempts: max 10 failures per IP per 60 seconds.
+
+_login_failures: dict[str, list[float]] = defaultdict(list)
+_login_lock = Lock()
+_LOGIN_WINDOW_SEC = 60
+_LOGIN_MAX_FAILURES = 10
+
+
+def _is_login_allowed(ip: str) -> bool:
+    now = time.time()
+    with _login_lock:
+        window = [t for t in _login_failures[ip] if now - t < _LOGIN_WINDOW_SEC]
+        _login_failures[ip] = window
+        return len(window) < _LOGIN_MAX_FAILURES
+
+
+def _record_login_failure(ip: str) -> None:
+    with _login_lock:
+        _login_failures[ip].append(time.time())
+
+
 # ── Route registry ─────────────────────────────────────────────────────────
 
 _routes: dict[tuple[str, str], callable] = {}
@@ -56,13 +79,26 @@ class KriyaHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         log.debug(f"API {args[0]} {args[1]} {args[2]}")
 
+    def _cors_origin(self) -> Optional[str]:
+        """Return the value to use for Access-Control-Allow-Origin, or None."""
+        cfg = get_config()
+        allowed = cfg.cors_origins
+        if not allowed:
+            return None
+        if "*" in allowed:
+            return "*"
+        origin = self.headers.get("Origin", "")
+        return origin if origin in allowed else None
+
     def _send(self, data: dict | list, status: int = 200):
         body = json.dumps(data, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", len(body))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        cors = self._cors_origin()
+        if cors:
+            self.send_header("Access-Control-Allow-Origin", cors)
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
         self.wfile.write(body)
 
@@ -101,9 +137,11 @@ class KriyaHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        cors = self._cors_origin()
+        if cors:
+            self.send_header("Access-Control-Allow-Origin", cors)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
 
     def _dispatch(self, method: str):
@@ -187,9 +225,13 @@ class KriyaHandler(BaseHTTPRequestHandler):
 
 @route("POST", "/api/auth/login")
 def login(h: KriyaHandler, *_):
+    ip = h.client_address[0]
+    if not _is_login_allowed(ip):
+        return h._err("Too many failed attempts – try again later", 429)
     body = h._body()
     token = authenticate(body.get("username", ""), body.get("password", ""))
     if not token:
+        _record_login_failure(ip)
         return h._err("Invalid credentials", 401)
     h._send({"token": token})
 
@@ -205,13 +247,14 @@ def me(h: KriyaHandler, *_):
 
 @route("GET", "/api/status")
 def status(h: KriyaHandler, *_):
+    if not h._require("project:read"):
+        return
     h._send({
         "status": "running",
         "version": "0.3.0",
         "arch": _get_arch(),
         "providers": [p.name for p in get_config().providers if p.enabled],
         "uptime_s": int(time.time() - _start_time),
-        "db": str(store.DB_PATH) if hasattr(store, "DB_PATH") else "ok",
     })
 
 @route("GET", "/api/health")
@@ -408,12 +451,15 @@ def list_agents(h: KriyaHandler, path, qs):
 
 @route("GET", "/api/agents/<id>")
 def get_agent(h: KriyaHandler, *_, **params):
-    if not h._require("agent:read"):
+    claims = h._require("agent:read")
+    if not claims:
         return
     a = store.fetch_one("agents", params["id"])
     if not a:
         return h._err("Not found", 404)
-    a["messages"] = store.fetch_where("agent_messages", agent_id=params["id"])
+    # Only admins get full conversation history — it may contain injected secrets
+    if has_capability(claims.get("rol", ""), "admin:read"):
+        a["messages"] = store.fetch_where("agent_messages", agent_id=params["id"])
     h._send(a)
 
 
@@ -444,73 +490,6 @@ def del_proj_secret(h: KriyaHandler, *_, **params):
     if not h._require("project:write"):
         return
     delete_secret(params["project_id"], params["key"])
-    h._send({"deleted": True})
-
-
-# ── Task extras ───────────────────────────────────────────────────────────
-
-@route("DELETE", "/api/projects/<project_id>/tasks/<id>")
-def delete_task(h: KriyaHandler, *_, **params):
-    if not h._require("task:write"):
-        return
-    t = store.fetch_one("tasks", params["id"])
-    if not t or t.get("project_id") != params["project_id"]:
-        return h._err("Not found", 404)
-    store.delete("tasks", params["id"])
-    h._send({"deleted": True})
-
-
-@route("PUT", "/api/projects/<id>/schedule")
-def update_schedule(h: KriyaHandler, *_, **params):
-    if not h._require("project:write"):
-        return
-    body = h._body()
-    sched = body.get("schedule", "").strip()
-    if not sched:
-        return h._err("schedule required")
-    store.update("projects", params["id"], schedule=sched, updated_at=time.time())
-    # Upsert scheduled_job
-    existing = store.raw_query("SELECT id FROM scheduled_jobs WHERE project_id=?", (params["id"],))
-    if existing:
-        store.raw_query(
-            "UPDATE scheduled_jobs SET schedule=?, next_run=?, enabled=1 WHERE project_id=?",
-            (sched, next_run_time(sched), params["id"])
-        )
-    else:
-        store.insert("scheduled_jobs",
-            project_id=params["id"],
-            schedule=sched,
-            next_run=next_run_time(sched),
-        )
-    h._send({"updated": True, "schedule": sched})
-
-
-# ── Memory ─────────────────────────────────────────────────────────────────
-
-@route("GET", "/api/projects/<project_id>/memory")
-def list_project_memory(h: KriyaHandler, path, qs, **params):
-    if not h._require("project:read"):
-        return
-    limit = int(qs.get("limit", [50])[0])
-    rows = store.raw_query(
-        "SELECT id, agent_id, content, importance, created_at FROM memory "
-        "WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
-        (params["project_id"], limit)
-    )
-    h._send(rows)
-
-
-@route("DELETE", "/api/projects/<project_id>/memory/<id>")
-def delete_memory(h: KriyaHandler, *_, **params):
-    if not h._require("project:write"):
-        return
-    rows = store.raw_query(
-        "SELECT id FROM memory WHERE id=? AND project_id=?",
-        (params["id"], params["project_id"])
-    )
-    if not rows:
-        return h._err("Not found", 404)
-    store.raw_query("DELETE FROM memory WHERE id=?", (params["id"],))
     h._send({"deleted": True})
 
 
@@ -624,95 +603,6 @@ def list_skills_endpoint(h: KriyaHandler, *_):
         return
     from kriya.core.agent import _skill_handlers
     h._send([{"id": sid, "loaded": True} for sid in _skill_handlers])
-
-
-# ── Users ────────────────────────────────────────────────────────────────
-
-@route("GET", "/api/users")
-def list_users(h: KriyaHandler, *_):
-    if not h._require("project:read"):
-        return
-    users = store.fetch_all("users")
-    for u in users:
-        u.pop("password_hash", None)
-    h._send(users)
-
-
-@route("POST", "/api/users")
-def create_user(h: KriyaHandler, *_):
-    if not h._require("admin"):
-        return
-    body = h._body()
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    role = body.get("role", "read_only")
-    if not username:
-        return h._err("username required")
-    if not password:
-        return h._err("password required")
-    from kriya.security.vault import ROLES
-    if role not in ROLES:
-        return h._err(f"invalid role, must be one of: {', '.join(ROLES)}")
-    from kriya.security.vault import hash_password
-    hashed = hash_password(password)
-    uid = store.insert("users",
-        username=username,
-        password_hash=hashed,
-        role=role,
-    )
-    user = store.fetch_one("users", uid)
-    user.pop("password_hash", None)
-    h._send(user, 201)
-
-
-@route("DELETE", "/api/users/<id>")
-def delete_user(h: KriyaHandler, *_, **params):
-    if not h._require("admin"):
-        return
-    user = store.fetch_one("users", params["id"])
-    if not user:
-        return h._err("User not found", 404)
-    store.delete("users", params["id"])
-    h._send({"deleted": True})
-
-
-@route("PUT", "/api/users/<id>/role")
-def change_user_role(h: KriyaHandler, *_, **params):
-    if not h._require("admin"):
-        return
-    user = store.fetch_one("users", params["id"])
-    if not user:
-        return h._err("User not found", 404)
-    body = h._body()
-    new_role = body.get("role", "")
-    from kriya.security.vault import ROLES
-    if new_role not in ROLES:
-        return h._err(f"invalid role, must be one of: {', '.join(ROLES)}")
-    store.update("users", params["id"], role=new_role)
-    user = store.fetch_one("users", params["id"])
-    user.pop("password_hash", None)
-    h._send(user)
-
-
-@route("PUT", "/api/users/<id>/password")
-def change_user_password(h: KriyaHandler, *_, **params):
-    claims = h._claims()
-    if not claims:
-        return h._err("Unauthorized", 401)
-    target_user = store.fetch_one("users", params["id"])
-    if not target_user:
-        return h._err("User not found", 404)
-    is_admin = has_capability(claims.get("rol", ""), "admin")
-    is_self = claims.get("sub") == params["id"]
-    if not is_admin and not is_self:
-        return h._err("Forbidden", 403)
-    body = h._body()
-    new_password = body.get("password", "")
-    if not new_password:
-        return h._err("password required")
-    hashed = hash_password(new_password)
-    store.update("users", params["id"], password_hash=hashed)
-    h._send({"updated": True})
 
 
 # ── Async bridge ──────────────────────────────────────────────────────────
