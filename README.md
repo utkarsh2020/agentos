@@ -125,9 +125,10 @@ open http://localhost:7777      # or http://<pi-ip>:7777
 On first boot, a random admin password is generated and saved to `first_run_credentials.txt` in the data directory. Read it, login, then change the password immediately:
 
 ```bash
-cat first_run_credentials.txt      # dev — or /var/lib/kriya/first_run_credentials.txt on Pi
+cat first_run_credentials.txt                    # dev
+sudo cat /var/lib/kriya/first_run_credentials.txt  # Pi / systemd install
 agent login
-agent user passwd admin            # file is deleted automatically after this
+agent user passwd admin   # file is deleted automatically after this
 ```
 
 ---

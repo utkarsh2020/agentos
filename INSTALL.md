@@ -75,8 +75,8 @@ On first boot, a random admin password is generated and saved to `first_run_cred
 # Development
 cat first_run_credentials.txt
 
-# Production (systemd install)
-cat /var/lib/kriya/first_run_credentials.txt
+# Production (systemd install — file is owned by the kriya system user)
+sudo cat /var/lib/kriya/first_run_credentials.txt
 ```
 
 The file is deleted automatically after you change the admin password. Change it immediately:
@@ -181,10 +181,10 @@ journalctl -u kriya -f
 **Step 4: Login and verify**
 
 ```bash
-cat /var/lib/kriya/first_run_credentials.txt   # get the generated admin password
-agent login              # use the password from the file above
-agent status             # should show "running"
-agent user passwd admin  # change the password (deletes the credentials file)
+sudo cat /var/lib/kriya/first_run_credentials.txt   # get the generated admin password
+agent login                   # use the password from the file above
+agent status                  # should show "running"
+agent user passwd admin       # change the password (deletes the credentials file)
 ```
 
 **Step 5: Open the dashboard**
@@ -337,7 +337,7 @@ curl -s http://localhost:7777/api/health
 # Should return: {"ok": true}
 
 # 4. Login works
-cat /var/lib/kriya/first_run_credentials.txt   # get the generated password
+sudo cat /var/lib/kriya/first_run_credentials.txt   # get the generated password
 agent login
 
 # 5. Dashboard loads

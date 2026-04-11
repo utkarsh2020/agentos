@@ -1,4 +1,9 @@
 # ── Runtime state ─────────────────────────────────────────────────────────
+kriya.db
+kriya.db-wal
+kriya.db-shm
+kriya.pid
+kriya.sock
 agentd.db
 agentd.db-wal
 agentd.db-shm
@@ -8,7 +13,10 @@ agentd.sock
 # ── Secrets & vault ────────────────────────────────────────────────────────
 vault/*.enc
 vault/master.key
+vault/.vault_passphrase
 /vault/
+.jwt_secret
+first_run_credentials.txt
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 logs/*.jsonl
@@ -34,6 +42,7 @@ agentd.env
 *.env.local
 
 # ── User token (saved by CLI) ─────────────────────────────────────────────
+.kriya_token
 .agentd_token
 
 # ── OS ────────────────────────────────────────────────────────────────────
