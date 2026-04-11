@@ -123,8 +123,10 @@ KRIYA_PORT=7777
 KRIYA_LOG_LEVEL=INFO
 KRIYA_MAX_AGENTS=$MAX_AGENTS
 
-# Vault master key — CHANGE before first run
-KRIYA_VAULT_PASS=change-me-please
+# Vault master key — set a strong random value for portability across machines.
+# If unset, Kriya auto-generates one and saves it to vault/.vault_passphrase.
+# WARNING: if you move the vault to another machine, this value must match.
+KRIYA_VAULT_PASS=change-me-to-a-strong-random-passphrase
 ENVEOF
   chmod 600 "$CONF_DIR/kriya.env"
 fi

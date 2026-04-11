@@ -137,7 +137,7 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - `_serve_static()`: serves `static/` with path traversal protection. Falls back to source-tree `static/` if `BASE_DIR/static/` doesn't exist (dev mode)
 - `_run_async(coro)`: submits coroutine to the main event loop from the HTTP server thread via `asyncio.run_coroutine_threadsafe`
 - `_get_arch()`: `platform.machine()` → human label, included in `/api/status`
-- `/api/status` returns: `status`, `version`, `arch`, `providers`, `uptime_s`, `db`
+- `/api/status` requires auth (`project:read`); returns: `status`, `version`, `arch`, `providers`, `uptime_s` (db path intentionally excluded)
 - API server runs in a daemon `Thread`, not the asyncio loop
 
 ### `kriya/security/vault.py`
@@ -147,7 +147,7 @@ The system is NOT a chatbot. It is a **task automation pipeline** where:
 - `_get_master_key()`: loads or generates 32-byte master key. Stored as `vault/master.key` = `salt(16) + XOR(master, pbkdf2(VAULT_PASS, salt))`
 - `_encrypt(plaintext)` → `"aes:..."` (AES-256-GCM if `cryptography` installed) or `"xor:..."` (HMAC-XOR fallback)
 - `set_secret(project_id, key, value)`: writes `vault/<project_id>/<key>.enc`
-- `get_secret(project_id, key)`: reads vault file, or falls back to `KRIYA_SECRET_<PROJECT>_<KEY>` env var, or plain env var named `key`
+- `get_secret(project_id, key)`: reads vault file, or falls back to `KRIYA_SECRET_<PROJECT>_<KEY>` env var only (raw env fallback removed — prevented agents from leaking `ANTHROPIC_API_KEY` etc.)
 
 ### `kriya/daemon.py`
 - `boot()` coroutine: `init_db()` → `register_builtin_skills()` → `_load_plugin_skills()` → `start_api_server()` → `CronScheduler` task → heartbeat task → `_shutdown_event.wait()`
@@ -161,8 +161,8 @@ Seven skills, all stdlib-only:
 - `http.call`: GET/POST/etc with custom headers and body
 - `web.scrape`: fetch URL, strip HTML to plain text (regex-based, no BS4)
 - `fs.write`: write to `/tmp/` or `/var/lib/kriya/projects/` only
-- `fs.read`: read file content with byte cap
-- `system.shell`: whitelisted prefix check, then `subprocess.run` with timeout
+- `fs.read`: read file content with byte cap; restricted to `/tmp` and `/var/lib/kriya/projects` (same allowlist as `fs.write`)
+- `system.shell`: exact base-command allowlist (`_SHELL_ALLOWED_CMDS`) + shell metacharacter rejection + `shell=False` with `shlex.split`; prefix-only check removed (was bypassable via `;`, `&&`, `$()`)
 - `memory.remember`: calls `LongTermMemory.remember()`
 - `memory.recall`: calls `LongTermMemory.recall()`
 
@@ -542,7 +542,7 @@ When Kilo Code generates new code, verify these invariants:
 3. **Skill signature.** Every skill handler must be `def handle(params: dict, secrets: dict) -> dict` or `async def handle(params: dict, secrets: dict) -> dict`.
 4. **Event emission.** Every significant state change must `append_event()` or `bus.publish()`. Check that new scheduler code emits to `Topics`.
 5. **Pi Zero budget.** No new code should allocate >10 MB per operation. No loading large libraries.
-6. **Test count.** After any change, `python3 tests/test_suite.py` must show ≥40 tests passing.
+6. **Test count.** After any change, `python3 tests/test_suite.py` must show ≥41 tests passing.
 
 ---
 
@@ -565,7 +565,8 @@ KRIYA_BASE=/var/lib/kriya                   # where DB, vault, logs live
 KRIYA_HOST=0.0.0.0
 KRIYA_PORT=7777
 KRIYA_LOG_LEVEL=INFO
-KRIYA_JWT_SECRET=<32-hex-chars>              # set for persistence across restarts
-KRIYA_VAULT_PASS=<passphrase>               # MUST set before first run
+KRIYA_JWT_SECRET=<32-hex-chars>              # optional: auto-persisted to .jwt_secret; set explicitly in production
+KRIYA_VAULT_PASS=<passphrase>               # optional: auto-generated if unset; set explicitly for portability
+KRIYA_CORS_ORIGINS=https://app.example.com  # optional: comma-separated allowed origins (default: CORS disabled)
 KRIYA_MAX_AGENTS=3                           # 1-2 for Pi Zero W
 ```

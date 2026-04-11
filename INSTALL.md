@@ -62,14 +62,14 @@ export OLLAMA_MODEL=llama3              # Local Ollama (not on ARMv6)
 python3 kriya/daemon.py
 
 # 4. In another terminal — verify
-python3 bin/agent login                  # admin / agentadmin
+python3 bin/agent login                  # use the password printed at first boot
 python3 bin/agent status
 
 # 5. Open the dashboard
 open http://localhost:7777
 ```
 
-Default credentials: `admin` / `agentadmin` — **change immediately:**
+On first boot, a random admin password is generated and printed once to the console — save it immediately, then change it:
 
 ```bash
 python3 bin/agent user passwd admin
@@ -171,9 +171,9 @@ journalctl -u kriya -f
 **Step 4: Login and verify**
 
 ```bash
-agent login              # admin / agentadmin
+agent login              # use the password printed at first boot
 agent status             # should show "running"
-agent user passwd admin  # CHANGE the default password
+agent user passwd admin  # set a new password
 ```
 
 **Step 5: Open the dashboard**
@@ -280,8 +280,9 @@ You need at least one provider configured. The auto-fallback order is: Anthropic
 
 | Variable | Default | Description |
 |---|---|---|
-| `KRIYA_VAULT_PASS` | `kriya-default-change-me` | Master key for secrets vault — **always change** |
-| `KRIYA_JWT_SECRET` | auto-generated | HS256 signing key for JWT tokens |
+| `KRIYA_VAULT_PASS` | auto-generated (saved to `vault/.vault_passphrase`) | Master key for secrets vault — set explicitly in production for portability across machines |
+| `KRIYA_JWT_SECRET` | auto-persisted to `.jwt_secret` | HS256 signing key — survives restarts automatically; set explicitly in production |
+| `KRIYA_CORS_ORIGINS` | _(none — CORS disabled)_ | Comma-separated allowed origins for the API. Use `*` only for public APIs. |
 
 ### Daemon Tuning
 
@@ -326,7 +327,7 @@ curl -s http://localhost:7777/api/health
 
 # 4. Login works
 agent login
-# Enter: admin / agentadmin (then change the password)
+# Enter: admin + the password printed at first boot
 
 # 5. Dashboard loads
 curl -s -o /dev/null -w "%{http_code}" http://localhost:7777/

@@ -4,16 +4,6 @@
 
 A self-hosted runtime for orchestrating AI agents, task pipelines, and multi-channel integrations. Runs on ARM 32-bit (Pi Zero W), ARM 64-bit (Pi 4/5), and x86_64 Linux. Zero external Python dependencies — pure stdlib only.
 
-```
-   _                    _    ___  ____
-  /_\   __ _  ___ _ __ | |_ / _ \/ ___|
- //_\\ / _` |/ _ \ '_ \| __| | | \___ \
-/  _  \ (_| |  __/ | | | |_| |_| |___) |
-\_/ \_/\__, |\___|_| |_|\__|\___/|____/
-       |___/  v0.3.0
-```
-
----
 
 ## Contents
 
@@ -132,7 +122,7 @@ python3 bin/agent run examples/newsletter.toml --follow
 open http://localhost:7777      # or http://<pi-ip>:7777
 ```
 
-Default login: `admin` / `agentadmin` — **change this before exposing to a network.**
+On first boot, a random admin password is generated and printed to the console once — save it immediately.
 
 ---
 
@@ -233,8 +223,9 @@ Configuration is read from **environment variables** (highest priority) or `kriy
 | `KRIYA_HOST` | `0.0.0.0` | API server bind address |
 | `KRIYA_PORT` | `7777` | API server port |
 | `KRIYA_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
-| `KRIYA_JWT_SECRET` | auto-generated | HS256 signing key — set explicitly for multi-restart consistency |
-| `KRIYA_VAULT_PASS` | `kriya-default-change-me` | Master key for secrets vault — **always change this** |
+| `KRIYA_JWT_SECRET` | persisted to `.jwt_secret` | HS256 signing key — auto-persisted across restarts; set explicitly in production |
+| `KRIYA_VAULT_PASS` | auto-generated (see `vault/.vault_passphrase`) | Master key for secrets vault — set explicitly in production for portability |
+| `KRIYA_CORS_ORIGINS` | _(none — CORS disabled)_ | Comma-separated allowed origins, e.g. `https://app.example.com`. Use `*` only for public APIs. |
 | `KRIYA_MAX_AGENTS` | `3` | Maximum concurrent agents |
 | `ANTHROPIC_API_KEY` | — | Enables Anthropic Claude provider |
 | `ANTHROPIC_MODEL` | `claude-3-5-haiku-20241022` | Default Claude model |
@@ -272,7 +263,7 @@ The dashboard is served at `http://<host>:7777/` — no separate server needed.
 | **Event log** | Full audit log, filterable by topic. |
 | **Skills** | All loaded skills with status. |
 
-**Login:** `admin` / `agentadmin` (change via `agent user passwd admin`).
+**Login:** use the `admin` credentials printed at first boot. Change the password immediately via `agent user passwd admin`.
 
 The dashboard is a single static HTML file (`static/dashboard.html`). It requires no build step and no JavaScript framework — works in any modern browser including on-device if you access via `localhost`.
 
@@ -820,7 +811,9 @@ export KRIYA_VAULT_PASS="my-long-random-passphrase"
 
 - JWT HS256, 1-hour TTL
 - Tokens saved to `~/.kriya_token` by the CLI
-- All API endpoints require `Authorization: Bearer <token>` except `/api/health`
+- JWT secret is auto-persisted to `$KRIYA_BASE/.jwt_secret` on first boot (tokens survive restarts); set `KRIYA_JWT_SECRET` in the environment for production deployments
+- All API endpoints require `Authorization: Bearer <token>` except `/api/health` and `/api/auth/login`
+- Login endpoint is rate-limited: 10 failed attempts per IP per 60 seconds
 
 ### RBAC
 
@@ -855,7 +848,7 @@ All endpoints require `Authorization: Bearer <token>` unless noted.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/health` | No | Health check |
-| `GET` | `/api/status` | No | Version, uptime |
+| `GET` | `/api/status` | Yes (`project:read`) | Version, uptime |
 | `POST` | `/api/auth/login` | No | Get JWT token |
 | `GET` | `/api/auth/me` | Yes | Current user info |
 

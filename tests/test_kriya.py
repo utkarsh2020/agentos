@@ -161,9 +161,16 @@ class KriyaTestCase(unittest.TestCase):
         self.assertIn("KEY_B", keys2)
 
     def test_vault_env_fallback(self):
-        os.environ["MY_ENV_SECRET"] = "from-environment"
-        val = get_secret("nonexistent-project", "MY_ENV_SECRET")
-        self.assertEqual(val, "from-environment")
+        # Namespaced env var (KRIYA_SECRET_{PROJECT}_{KEY}) should be returned
+        os.environ["KRIYA_SECRET_MYPROJ_MY_ENV_SECRET"] = "from-namespaced-env"
+        val = get_secret("myproj", "MY_ENV_SECRET")
+        self.assertEqual(val, "from-namespaced-env")
+        del os.environ["KRIYA_SECRET_MYPROJ_MY_ENV_SECRET"]
+
+        # Raw env key must NOT leak — prevents agents from extracting API keys etc.
+        os.environ["MY_ENV_SECRET"] = "should-not-leak"
+        val2 = get_secret("nonexistent-project", "MY_ENV_SECRET")
+        self.assertIsNone(val2, "Raw env var fallback must not expose arbitrary env keys")
         del os.environ["MY_ENV_SECRET"]
 
     # ── Memory – embeddings ───────────────────────────────────────────────
@@ -450,6 +457,17 @@ prompt = "Do the work."
         from http.server import HTTPServer
         from kriya.api.server import KriyaHandler, _start_time
 
+        # Insert a test user with a known password (don't rely on generated admin creds)
+        TEST_USER = "testuser-api"
+        TEST_PASS = "TestPass123!"
+        store.raw_query("DELETE FROM users WHERE username=?", (TEST_USER,))
+        store.insert("users",
+            username=TEST_USER,
+            password_hash=hash_password(TEST_PASS),
+            role="admin",
+            created_at=time.time(),
+        )
+
         # Find a free port
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
@@ -474,22 +492,28 @@ prompt = "Do the work."
             data = json.loads(req.read())
             self.assertTrue(data["ok"])
 
+            # Status without auth must be rejected
+            import urllib.request as ur, urllib.error as ue
+            with self.assertRaises(ue.HTTPError) as ctx:
+                ur.urlopen(f"{base}/api/status", timeout=5)
+            self.assertEqual(ctx.exception.code, 401)
+
             # Login
-            import urllib.request as ur
             r = ur.Request(f"{base}/api/auth/login",
-                           data=json.dumps({"username": "admin", "password": "agentadmin"}).encode(),
+                           data=json.dumps({"username": TEST_USER, "password": TEST_PASS}).encode(),
                            headers={"Content-Type": "application/json"})
             resp = ur.urlopen(r, timeout=5)
             body = json.loads(resp.read())
             self.assertIn("token", body)
             tok = body["token"]
 
-            # Authenticated status
+            # Authenticated status — db path must not be exposed
             r2 = ur.Request(f"{base}/api/status",
                             headers={"Authorization": f"Bearer {tok}"})
             resp2 = ur.urlopen(r2, timeout=5)
             body2 = json.loads(resp2.read())
             self.assertEqual(body2["status"], "running")
+            self.assertNotIn("db", body2)
 
         finally:
             server.shutdown()

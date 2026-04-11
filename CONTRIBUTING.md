@@ -61,7 +61,7 @@ def my_resource(h: KriyaHandler, *_):
 python3 tests/test_suite.py
 ```
 
-Tests use a temp directory and never hit the network (LLM calls are mocked). All 40 tests must pass before merging.
+Tests use a temp directory and never hit the network (LLM calls are mocked). All 41 tests must pass before merging.
 
 ## Code style
 
