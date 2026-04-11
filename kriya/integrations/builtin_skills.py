@@ -106,6 +106,10 @@ def skill_web_scrape(params: dict, secrets: dict) -> dict:
     if not url:
         return {"error": "url required"}
 
+    ok, reason = _is_safe_url(url)
+    if not ok:
+        return {"error": f"URL blocked: {reason}"}
+
     headers = {
         "User-Agent": "Kriya/0.3 (+https://github.com/kriya)",
         "Accept": "text/html,application/xhtml+xml",

@@ -105,6 +105,14 @@ if [ ! -f "$CONF_DIR/kriya.env" ]; then
   else                               MAX_AGENTS=4; MEM_LIMIT="512M"; TIMEOUT=120
   fi
 
+  # Generate a cryptographically random vault passphrase at install time.
+  # openssl is present on all supported targets; fall back to /dev/urandom if not.
+  if command -v openssl &>/dev/null; then
+    VAULT_PASS=$(openssl rand -hex 32)
+  else
+    VAULT_PASS=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  fi
+
   cat > "$CONF_DIR/kriya.env" << ENVEOF
 # Kriya Environment Configuration
 # Architecture: $ARCH_LABEL (${BITS}-bit)
@@ -123,10 +131,10 @@ KRIYA_PORT=7777
 KRIYA_LOG_LEVEL=INFO
 KRIYA_MAX_AGENTS=$MAX_AGENTS
 
-# Vault master key — set a strong random value for portability across machines.
-# If unset, Kriya auto-generates one and saves it to vault/.vault_passphrase.
-# WARNING: if you move the vault to another machine, this value must match.
-KRIYA_VAULT_PASS=change-me-to-a-strong-random-passphrase
+# Vault master key — generated randomly at install time.
+# Keep this value safe: losing it makes existing vault secrets unreadable.
+# If you migrate to a new machine, copy this value across as well.
+KRIYA_VAULT_PASS=$VAULT_PASS
 ENVEOF
   chmod 600 "$CONF_DIR/kriya.env"
 fi
