@@ -54,3 +54,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# ── OpenWolf / Claude local ───────────────────────────────────────────────
+.claude/
+.wolf/
+CLAUDE.md
